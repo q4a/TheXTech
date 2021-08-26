@@ -4,28 +4,28 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef NO_SDL
 #include <SDL2/SDL_version.h>
+#else
+#include "SDL_supplement.h"
+#endif
 
 #include "globals.h"
+#include "main/menu_main.h"
 #include <fmt_format_ne.h>
 #include <cmath>
 #include <cfenv>
@@ -50,7 +50,9 @@ bool TakeScreen = false;
 std::string LB;
 std::string EoT;
 RangeArr<ConKeyboard_t, 1, maxLocalPlayers> conKeyboard;
+EditorConKeyboard_t editorConKeyboard;
 RangeArr<ConJoystick_t, 1, maxLocalPlayers> conJoystick;
+EditorConJoystick_t editorConJoystick;
 RangeArrI<int, 1, maxLocalPlayers, 0> useJoystick;
 RangeArrI<bool, 1, maxLocalPlayers, false> wantedKeyboard;
 
@@ -68,7 +70,11 @@ KM_Key lastJoyButton;
 bool GamePaused = false;
 std::string MessageText;
 int NumSelectWorld  = 0;
+int NumSelectWorldEditable  = 0;
+int NumSelectBattle  = 0;
 std::vector<SelectWorld_t> SelectWorld;
+std::vector<SelectWorld_t> SelectWorldEditable;
+std::vector<SelectWorld_t> SelectBattle;
 bool ShowFPS = false;
 double PrintFPS = 0.0;
 bool GameplayPoundByAltRun = false;
@@ -86,6 +92,7 @@ RangeArr<Location_t, 1, 2> PlayerStart;
 RangeArrI<bool, 0, 20, false> blockCharacter;
 RangeArrI<int, 0, maxPlayers, 0> OwedMount;
 RangeArrI<int, 0, maxPlayers, 0> OwedMountType;
+bool AutoUseModern = false;
 RangeArr<float, 0, maxSections> AutoX;
 RangeArr<float, 0, maxSections> AutoY;
 int numStars = 0;
@@ -98,8 +105,8 @@ std::string StartLevel;
 bool NoMap = false;
 bool RestartLevel = false;
 float LevelChop[maxSections + 1];
-RangeArr<int, -FLBlocks, FLBlocks> FirstBlock;
-RangeArr<int, -FLBlocks, FLBlocks> LastBlock;
+// RangeArr<int, -FLBlocks, FLBlocks> FirstBlock;
+// RangeArr<int, -FLBlocks, FLBlocks> LastBlock;
 int MidBackground = 1;
 int LastBackground = 1;
 int iBlocks = 0;
@@ -202,9 +209,10 @@ RangeArrI<int, 0, maxBlockType, 0> BlockSlope2;
 RangeArr<double, 0, maxPlayers> vScreenX;
 RangeArr<double, 0, maxPlayers> vScreenY;
 
+bool qScreen = false;
 RangeArr<double, 0, maxPlayers> qScreenX;
 RangeArr<double, 0, maxPlayers> qScreenY;
-bool qScreen = false;
+RangeArr<vScreen_t, 0, 2> qScreenLoc;
 
 RangeArrI<int, 0, maxBlockType, 0> BlockWidth;
 RangeArrI<int, 0, maxBlockType, 0> BlockHeight;
@@ -258,6 +266,8 @@ int LevelMacroCounter = 0;
 int numJoysticks = 0;
 std::string FileName;
 std::string FileNameFull;
+std::string FileNameWorld;
+std::string FileNameFullWorld;
 bool IsEpisodeIntro = false;
 int Coins = 0;
 float Lives = 0.0f;
@@ -301,7 +311,7 @@ int ReturnWarpSaved = 0;
 int StartWarp = 0;
 Physics_t Physics;
 int MenuCursor = 0;
-int MenuMode = 0;
+int MenuMode = MENU_INTRO;
 bool MenuCursorCanMove = false;
 bool MenuCursorCanMove2 = false;
 bool NextFrame = false;
@@ -333,7 +343,6 @@ bool MaxFPS = false;
 bool GodMode = false;
 bool GrabAll = false;
 bool Cheater = false;
-Uint32 RenderMode = 1;
 RangeArr<std::string, 1, maxWorldCredits> WorldCredits;
 int Score = 0;
 RangeArrI<int, 1, 13, 0> Points;
@@ -507,11 +516,22 @@ int BattleIntro = 0;
 int BattleOutro = 0;
 std::string LevelName;
 
+#ifndef FIXED_RES
+int ScreenW = 800;
+int ScreenH = 600;
+void Set_Resolution(int sw, int sh)
+{
+	ScreenW = sw;
+	ScreenH = sh;
+}
+#endif
+
 void DoEvents()
 {
     frmMain.doEvents();
 }
 
+#ifndef NO_SDL
 int showCursor(int show)
 {
     return SDL_ShowCursor(show);
@@ -601,6 +621,22 @@ std::string getJoyKeyName(bool isController, const KM_Key &key)
         return fmt::format_ne("K={0} ID={1} T={2}", key.val, key.id, key.type);
     }
 }
+#endif
+// #ifndef NO_SDL
+
+#ifdef NO_SDL
+int showCursor(int show) {return 0;}
+const char *getKeyName(int key) {return " ... ";}
+// implementation dependent
+#ifdef __3DS__
+std::string getJoyKeyName(bool isController, const KM_Key &key)
+{
+    if(key.type < 0)
+        return "_";
+    return KEYNAMES[key.val];
+}
+#endif
+#endif
 
 
 void initAll()
@@ -621,8 +657,8 @@ void initAll()
     AutoY.fill(0.f);
     Water.fill(Water_t());
     Star.fill(Star_t());
-    FirstBlock.fill(0);
-    LastBlock.fill(0);
+    // FirstBlock.fill(0);
+    // LastBlock.fill(0);
     iBlock.fill(0);
     CustomMusic.fill(std::string());
     level.fill(Location_t());

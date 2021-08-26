@@ -4,29 +4,29 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef NO_SDL
 #include <SDL2/SDL_timer.h>
+#endif
 
 #include <Logger/logger.h>
 #include <pge_delay.h>
+#ifndef NO_INTPROC
+#include <InterProcess/intproc.h>
+#endif
 
 #include "../globals.h"
 #include "../frame_timer.h"
@@ -39,8 +39,9 @@
 #include "../npc.h"
 #include "../layers.h"
 #include "../player.h"
-#include "../editor.h"
+#include "../editor/editor.h"
 #include "speedrunner.h"
+#include "menu_main.h"
 
 #include "../pseudo_vb.h"
 
@@ -81,12 +82,15 @@ void GameLoop()
                 CheckpointsList.clear();
             }
         }
+
+        speedRun_triggerLeave();
         NextLevel();
         UpdateControls();
     }
     else if(qScreen)
     {
         UpdateEffects();
+        speedRun_tick();
         UpdateGraphics();
     }
     else if(BattleIntro > 0)
@@ -100,7 +104,7 @@ void GameLoop()
         }
         BattleIntro--;
         if(BattleIntro == 1)
-            PlaySound(58);
+            PlaySound(SFX_Checkpoint);
     }
     else
     {
@@ -122,13 +126,18 @@ void GameLoop()
         if(MagicHand)
             UpdateEditor();
 
+#ifndef NO_SDL
         bool altPressed = getKeyState(SDL_SCANCODE_LALT) == KEY_PRESSED ||
                           getKeyState(SDL_SCANCODE_RALT) == KEY_PRESSED;
 
         bool escPressed = getKeyState(SDL_SCANCODE_ESCAPE) == KEY_PRESSED;
 #ifdef __ANDROID__
         escPressed |= getKeyState(SDL_SCANCODE_AC_BACK) == KEY_PRESSED;
-#endif
+#endif // #ifdef __ANDROID__
+#else // #ifndef __3DS__
+        bool altPressed = false;
+        bool escPressed = false;
+#endif // #ifndef NO_SDL
 
         bool pausePress = (Player[1].Controls.Start || escPressed) && !altPressed;
 
@@ -166,7 +175,7 @@ void GameLoop()
                                         SoundPauseAll();
                                 }
                             }
-                            PlaySound(30);
+                            PlaySound(SFX_Pause);
                         }
                     }
                     else
@@ -193,7 +202,7 @@ void GameLoop()
                         {
                             FreezeNPCs = true;
                         }
-                        PlaySound(30);
+                        PlaySound(SFX_Pause);
                     }
                 }
             }
@@ -206,7 +215,7 @@ void PauseGame(int plr)
     bool stopPause = false;
     int A = 0;
     int B = 0;
-    bool noButtons = false;
+    bool noButtons = false, quitNoSound = false;
 //    double fpsTime = 0;
 //    int fpsCount = 0;
 
@@ -256,6 +265,16 @@ void PauseGame(int plr)
             BlockFrames();
             UpdateEffects();
 
+
+            if(SingleCoop > 0 || numPlayers > 2)
+            {
+                for(A = 1; A <= numPlayers; A++)
+                    Player[A].Controls = Player[1].Controls;
+            }
+
+            auto &c = Player[plr].Controls;
+
+#ifndef NO_SDL
             bool altPressed = getKeyState(SDL_SCANCODE_LALT) == KEY_PRESSED ||
                               getKeyState(SDL_SCANCODE_RALT) == KEY_PRESSED;
             bool escPressed = getKeyState(SDL_SCANCODE_ESCAPE) == KEY_PRESSED;
@@ -267,19 +286,17 @@ void PauseGame(int plr)
             bool menuDoPress = (returnPressed && !altPressed) || spacePressed;
             bool menuBackPress = (escPressed && !altPressed);
 
-            if(SingleCoop > 0 || numPlayers > 2)
-            {
-                for(A = 1; A <= numPlayers; A++)
-                    Player[A].Controls = Player[1].Controls;
-            }
-
-            auto &c = Player[plr].Controls;
-
             menuDoPress |= (c.Start || c.Jump) && !altPressed;
             menuBackPress |= c.Run && !altPressed;
 
             upPressed |= (c.Up && !altPressed);
             downPressed |= (c.Down && !altPressed);
+#else // #ifndef NO_SDL
+            bool menuDoPress = (c.Start || c.Jump);
+            bool menuBackPress = c.Run;
+            bool upPressed = c.Up;
+            bool downPressed = c.Down;
+#endif
 
             if(MessageText.empty())
             {
@@ -403,7 +420,7 @@ void PauseGame(int plr)
                                 break;
                             case 1: // Restart level
                                 stopPause = true;
-                                MenuMode = 0;
+                                MenuMode = MENU_INTRO;
                                 MenuCursor = 0;
                                 frmMain.setTargetTexture();
                                 frmMain.clearBuffer();
@@ -418,13 +435,16 @@ void PauseGame(int plr)
                                 Checkpoint.clear();
                                 CheckpointsList.clear();
                                 numStars = 0;
+#ifndef NO_INTPROC
+                                IntProc::sendStarsNumber(numStars);
+#endif
                                 numSavedEvents = 0;
                                 BlockSwitch.fill(false);
                                 PlaySound(SFX_Bullet);
                                 break;
                             case 3: // Quit testing
                                 stopPause = true;
-                                MenuMode = 0;
+                                MenuMode = MENU_INTRO;
                                 MenuCursor = 0;
                                 frmMain.setTargetTexture();
                                 frmMain.clearBuffer();
@@ -432,7 +452,14 @@ void PauseGame(int plr)
                                 EndLevel = true;
                                 StopMusic();
                                 DoEvents();
-                                KillIt(); // Quit the game entirely
+                                if(Backup_FullFileName.empty())
+                                {
+                                    KillIt(); // Quit the game entirely
+                                }
+                                else
+                                {
+                                    LevelBeatCode = -1; // Return to editor
+                                }
                                 break;
                             default:
                                 break;
@@ -445,6 +472,8 @@ void PauseGame(int plr)
                         else if(MenuCursor == 1 && (LevelSelect || (/*StartLevel == FileName*/IsEpisodeIntro && NoMap)) && !Cheater) // "Save and continue"
                         {
                             SaveGame();
+                            PlaySound(SFX_Checkpoint);
+                            quitNoSound = true;
                             stopPause = true;
                         }
                         else // "Quit" or "Save & Quit"
@@ -456,7 +485,7 @@ void PauseGame(int plr)
                             stopPause = true;
                             GameMenu = true;
 
-                            MenuMode = 0;
+                            MenuMode = MENU_INTRO;
                             MenuCursor = 0;
 
                             if(!LevelSelect)
@@ -529,7 +558,7 @@ void PauseGame(int plr)
     Player[plr].UnStart = false;
     Player[plr].CanJump = false;
 
-    if(!TestLevel && MessageText.empty())
+    if(!TestLevel && MessageText.empty() && !quitNoSound)
         PlaySound(SFX_Pause);
 
     if(PSwitchTime > 0)

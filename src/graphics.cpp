@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "globals.h"
@@ -79,13 +74,30 @@ void GetvScreen(int A)
         vScreenY[A] = -Player[A].Location.Y + (vScreen[A].Height * 0.5) - vScreenYOffset - Player[A].Location.Height;
         vScreenX[A] = vScreenX[A] - vScreen[A].tempX;
         vScreenY[A] = vScreenY[A] - vScreen[A].TempY;
-        if(-vScreenX[A] < level[Player[A].Section].X)
+
+#ifdef __3DS__
+        double screenMargin = Max3DOffset + vScreen[A].Left - vScreen[A].ScreenLeft;
+        if (screenMargin < 0.) screenMargin = 0.;
+#endif
+
+        if (vScreen[A].Width + level[Player[A].Section].X > level[Player[A].Section].Width)
+            vScreenX[A] = -level[Player[A].Section].X/2 + -(level[Player[A].Section].Width - vScreen[A].Width)/2;
+#ifdef __3DS__
+        else if(-vScreenX[A] + screenMargin < level[Player[A].Section].X)
+            vScreenX[A] = -level[Player[A].Section].X + screenMargin;
+        else if(-vScreenX[A] + vScreen[A].Width - screenMargin > level[Player[A].Section].Width)
+            vScreenX[A] = -(level[Player[A].Section].Width - vScreen[A].Width + screenMargin);
+#else
+        else if(-vScreenX[A] < level[Player[A].Section].X)
             vScreenX[A] = -level[Player[A].Section].X;
-        if(-vScreenX[A] + vScreen[A].Width > level[Player[A].Section].Width)
+        else if(-vScreenX[A] + vScreen[A].Width > level[Player[A].Section].Width)
             vScreenX[A] = -(level[Player[A].Section].Width - vScreen[A].Width);
-        if(-vScreenY[A] < level[Player[A].Section].Y)
+#endif
+        if (vScreen[A].Height + level[Player[A].Section].Y > level[Player[A].Section].Height)
+            vScreenY[A] = -level[Player[A].Section].Y/2 + -(level[Player[A].Section].Height - vScreen[A].Height)/2;
+        else if(-vScreenY[A] < level[Player[A].Section].Y)
             vScreenY[A] = -level[Player[A].Section].Y;
-        if(-vScreenY[A] + vScreen[A].Height > level[Player[A].Section].Height)
+        else if(-vScreenY[A] + vScreen[A].Height > level[Player[A].Section].Height)
             vScreenY[A] = -(level[Player[A].Section].Height - vScreen[A].Height);
         if(vScreen[A].TempDelay > 0)
             vScreen[A].TempDelay = vScreen[A].TempDelay - 1;
@@ -100,9 +112,35 @@ void GetvScreen(int A)
             if(vScreen[A].TempY < 0)
                 vScreen[A].TempY = vScreen[A].TempY + 1;
         }
+#ifdef __3DS__
+        vScreenX[A] -= std::fmod(vScreenX[A], 2.);
+        vScreenY[A] -= std::fmod(vScreenY[A], 2.);
+#endif
         if(Player[A].Mount == 2)
             Player[A].Location.Height = 128;
+
     }
+}
+
+//  Get the screen position if it were 800x600
+void GetvScreenCanonical(int A, int* left, int* top)
+{
+    if(Player[A].Mount == 2)
+        Player[A].Location.Height = 0;
+    *left = -Player[A].Location.X + (800 * 0.5) - Player[A].Location.Width / 2.0;
+    *top = -Player[A].Location.Y + (600 * 0.5) - vScreenYOffset - Player[A].Location.Height;
+    *left -= vScreen[A].tempX;
+    *top -= vScreen[A].TempY;
+    if(-(*left) < level[Player[A].Section].X)
+        *left = -level[Player[A].Section].X;
+    else if(-(*left) + 800 > level[Player[A].Section].Width)
+        *left = -(level[Player[A].Section].Width - 800);
+    if(-(*top) < level[Player[A].Section].Y)
+        *top = -level[Player[A].Section].Y;
+    else if(-(*top) + 600 > level[Player[A].Section].Height)
+        *top = -(level[Player[A].Section].Height - 600);
+    if(Player[A].Mount == 2)
+        Player[A].Location.Height = 128;
 }
 
 // Get the average screen position for all players
@@ -115,7 +153,6 @@ void GetvScreenAverage()
 
     OldX = vScreenX[1];
     OldY = vScreenY[1];
-    UNUSED(OldY);
 
     vScreenX[1] = 0;
     vScreenY[1] = 0;
@@ -142,19 +179,39 @@ void GetvScreenAverage()
             B = 1;
         }
         else
+        {
+            vScreenX[1] = OldX;
+            vScreenY[1] = OldY;
             return;
+        }
     }
-    vScreenX[1] = (vScreenX[1] / B) + (ScreenW * 0.5);
-    vScreenY[1] = (vScreenY[1] / B) + (ScreenH * 0.5) - vScreenYOffset;
+    vScreenX[1] = (vScreenX[1] / B) + (vScreen[1].Width * 0.5);
+    vScreenY[1] = (vScreenY[1] / B) + (vScreen[1].Height * 0.5) - vScreenYOffset;
 
-    if(-vScreenX[A] < level[Player[1].Section].X)
+#ifdef __3DS__
+    double screenMargin = Max3DOffset + vScreen[A].Left - vScreen[A].ScreenLeft;
+    if (screenMargin < 0.) screenMargin = 0.;
+#endif
+
+    if(vScreen[A].Width + level[Player[1].Section].X > level[Player[1].Section].Width)
+        vScreenX[A] = -level[Player[1].Section].X/2 + -(level[Player[1].Section].Width - vScreen[A].Width)/2;
+#ifdef __3DS__
+    else if(-vScreenX[A] + screenMargin < level[Player[1].Section].X)
+        vScreenX[A] = -level[Player[1].Section].X + screenMargin;
+    else if(-vScreenX[A] + vScreen[A].Width - screenMargin > level[Player[1].Section].Width)
+        vScreenX[A] = -(level[Player[1].Section].Width - vScreen[A].Width + screenMargin);
+#else
+    else if(-vScreenX[A] < level[Player[1].Section].X)
         vScreenX[A] = -level[Player[1].Section].X;
-    if(-vScreenX[A] + ScreenW > level[Player[1].Section].Width)
-        vScreenX[A] = -(level[Player[1].Section].Width - ScreenW);
-    if(-vScreenY[A] < level[Player[1].Section].Y)
+    else if(-vScreenX[A] + vScreen[A].Width > level[Player[1].Section].Width)
+        vScreenX[A] = -(level[Player[1].Section].Width - vScreen[A].Width);
+#endif
+    if(vScreen[A].Height + level[Player[1].Section].Y > level[Player[1].Section].Height)
+        vScreenY[A] = -level[Player[1].Section].Y/2 + -(level[Player[1].Section].Height - vScreen[A].Height)/2;
+    else if(-vScreenY[A] < level[Player[1].Section].Y)
         vScreenY[A] = -level[Player[1].Section].Y;
-    if(-vScreenY[A] + ScreenH > level[Player[1].Section].Height)
-        vScreenY[A] = -(level[Player[1].Section].Height - ScreenH);
+    else if(-vScreenY[A] + vScreen[A].Height > level[Player[1].Section].Height)
+        vScreenY[A] = -(level[Player[1].Section].Height - vScreen[A].Height);
 
     if(GameMenu)
     {
@@ -167,7 +224,61 @@ void GetvScreenAverage()
         }
         else if(vScreenX[1] < OldX - 10)
             vScreenX[1] = OldX - 10;
+
+        // on menu, bottom of screen always tracks bottom of level
+        vScreenY[A] = -(level[Player[1].Section].Height - ScreenH);
     }
+
+#ifdef __3DS__
+        vScreenX[A] -= std::fmod(vScreenX[A], 2.);
+        vScreenY[A] -= std::fmod(vScreenY[A], 2.);
+#endif
+}
+
+// Get the average screen position for all players as if the screen were 800x600
+void GetvScreenAverageCanonical(int* left, int* top)
+{
+    int A = 0;
+    int B = 0;
+
+    *left = 0;
+    *top = 0;
+
+    for(A = 1; A <= numPlayers; A++)
+    {
+        if(!Player[A].Dead && Player[A].Effect != 6)
+        {
+            *left -= Player[A].Location.X + Player[A].Location.Width / 2.0;
+            if(Player[A].Mount == 2)
+                *top -= Player[A].Location.Y;
+            else
+                *top -= Player[A].Location.Y + Player[A].Location.Height;
+            B += 1;
+        }
+    }
+
+    A = 1;
+    if(B == 0)
+    {
+        if(GameMenu)
+        {
+            *left = -level[0].X;
+            B = 1;
+        }
+        else
+            return;
+    }
+    *left = (*left / B) + (800 / 2);
+    *top = (*top / B) + (600 / 2) - vScreenYOffset;
+
+    if(-(*left) < level[Player[1].Section].X)
+        *left = -level[Player[1].Section].X;
+    else if(-(*left) + 800 > level[Player[1].Section].Width)
+        *left = -(level[Player[1].Section].Width - 800);
+    if(-(*top) < level[Player[1].Section].Y)
+        *top = -level[Player[1].Section].Y;
+    else if(-(*top) + 600 > level[Player[1].Section].Height)
+        *top = -(level[Player[1].Section].Height - 600);
 }
 
 // Get the average screen position for all players with no level edge detection
@@ -194,6 +305,11 @@ void GetvScreenAverage2()
         return;
     vScreenX[1] = (vScreenX[1] / B) + (ScreenW * 0.5);
     vScreenY[1] = (vScreenY[1] / B) + (ScreenH * 0.5) - vScreenYOffset;
+
+#ifdef __3DS__
+        vScreenX[A] -= std::fmod(vScreenX[A], 2.);
+        vScreenY[A] -= std::fmod(vScreenY[A], 2.);
+#endif
 }
 
 void SetupGraphics()
@@ -239,68 +355,76 @@ void SetupEditorGraphics()
 
 void PlayerWarpGFX(int A, Location_t &tempLocation, float &X2, float &Y2)
 {
+    auto &player = Player[A];
+    bool backward = player.WarpBackward;
+    auto &warp = Warp[player.Warp];
+    auto &warp_enter = backward ? warp.Exit : warp.Entrance;
+    auto &warp_exit = backward ? warp.Entrance : warp.Exit;
+    auto &warp_dir_enter = backward ? warp.Direction2 : warp.Direction;
+    auto &warp_dir_exit = backward ? warp.Direction : warp.Direction2;
+
     // .Effect = 3      -- Warp Pipe
     // .Effect2 = 0     -- Entering
     // .Effect2 = 1     -- Move to next spot
     // .Effect2 => 100  -- Delay at next spot
     // .Effect2 = 2     -- Exiting
     // .Effect2 = 3     -- Done
-    if(Player[A].Effect2 == 0.0)
+    if(player.Effect2 == 0.0)
     {
-        if(Warp[Player[A].Warp].Direction == 3) // Moving down
+        if(warp_dir_enter == 3) // Moving down
         {
-            if(tempLocation.Height > (Warp[Player[A].Warp].Entrance.Y + Warp[Player[A].Warp].Entrance.Height) - (tempLocation.Y))
-                tempLocation.Height = (Warp[Player[A].Warp].Entrance.Y + Warp[Player[A].Warp].Entrance.Height) - (tempLocation.Y);
+            if(tempLocation.Height > (warp_enter.Y + warp_enter.Height) - (tempLocation.Y))
+                tempLocation.Height = (warp_enter.Y + warp_enter.Height) - (tempLocation.Y);
         }
-        else if(Warp[Player[A].Warp].Direction == 1) // Moving up
+        else if(warp_dir_enter == 1) // Moving up
         {
-            if(Warp[Player[A].Warp].Entrance.Y > tempLocation.Y)
+            if(warp_enter.Y > tempLocation.Y)
             {
-                Y2 = float(Warp[Player[A].Warp].Entrance.Y - tempLocation.Y);
-                tempLocation.Y = Warp[Player[A].Warp].Entrance.Y;
+                Y2 = float(warp_enter.Y - tempLocation.Y);
+                tempLocation.Y = warp_enter.Y;
                 tempLocation.Height = tempLocation.Height - Y2;
             }
         }
-        else if(Warp[Player[A].Warp].Direction == 4) // Moving right
-            tempLocation.Width = (Warp[Player[A].Warp].Entrance.X + Warp[Player[A].Warp].Entrance.Width) - (tempLocation.X);
-        else if(Warp[Player[A].Warp].Direction == 2) // Moving left
+        else if(warp_dir_enter == 4) // Moving right
+            tempLocation.Width = (warp_enter.X + warp_enter.Width) - (tempLocation.X);
+        else if(warp_dir_enter == 2) // Moving left
         {
-            X2 = float(Warp[Player[A].Warp].Entrance.X - tempLocation.X);
+            X2 = float(warp_enter.X - tempLocation.X);
             if(X2 < 0)
                 X2 = 0;
             else
-                tempLocation.X = Warp[Player[A].Warp].Entrance.X;
+                tempLocation.X = warp_enter.X;
         }
     }
-    else if(Maths::iRound(Player[A].Effect2) == 2)
+    else if(Maths::iRound(player.Effect2) == 2)
     {
-        if(Warp[Player[A].Warp].Direction2 == 3) // Moving up
+        if(warp_dir_exit == 3) // Moving up
         {
-            if(tempLocation.Height > (Warp[Player[A].Warp].Exit.Y + Warp[Player[A].Warp].Exit.Height) - (tempLocation.Y))
-                tempLocation.Height = (Warp[Player[A].Warp].Exit.Y + Warp[Player[A].Warp].Exit.Height) - (tempLocation.Y);
+            if(tempLocation.Height > (warp_exit.Y + warp_exit.Height) - (tempLocation.Y))
+                tempLocation.Height = (warp_exit.Y + warp_exit.Height) - (tempLocation.Y);
         }
-        else if(Warp[Player[A].Warp].Direction2 == 1) // Moving down
+        else if(warp_dir_exit == 1) // Moving down
         {
-            if(Warp[Player[A].Warp].Exit.Y > tempLocation.Y)
+            if(warp_exit.Y > tempLocation.Y)
             {
-                Y2 = float(Warp[Player[A].Warp].Exit.Y - tempLocation.Y);
-                tempLocation.Y = Warp[Player[A].Warp].Exit.Y;
+                Y2 = float(warp_exit.Y - tempLocation.Y);
+                tempLocation.Y = warp_exit.Y;
                 tempLocation.Height = tempLocation.Height - double(Y2);
             }
         }
-        else if(Warp[Player[A].Warp].Direction2 == 4) // Moving left
-            tempLocation.Width = (Warp[Player[A].Warp].Exit.X + Warp[Player[A].Warp].Exit.Width) - (tempLocation.X);
-        else if(Warp[Player[A].Warp].Direction2 == 2) // Moving right
+        else if(warp_dir_exit == 4) // Moving left
+            tempLocation.Width = (warp_exit.X + warp_exit.Width) - (tempLocation.X);
+        else if(warp_dir_exit == 2) // Moving right
         {
-            X2 = float(Warp[Player[A].Warp].Exit.X - tempLocation.X);
+            X2 = float(warp_exit.X - tempLocation.X);
             if(X2 < 0)
                 X2 = 0;
             else
-                tempLocation.X = Warp[Player[A].Warp].Exit.X;
+                tempLocation.X = warp_exit.X;
         }
     }
 
-    if(Maths::iRound(Player[A].Effect2) == 1 || Player[A].Effect2 >= 100)
+    if(Maths::iRound(player.Effect2) == 1 || player.Effect2 >= 100)
         tempLocation.Height = 0;
 
     if(tempLocation.Height < 0)
@@ -314,68 +438,76 @@ void PlayerWarpGFX(int A, Location_t &tempLocation, float &X2, float &Y2)
 
 void NPCWarpGFX(int A, Location_t &tempLocation, float &X2, float &Y2)
 {
+    auto &player = Player[A];
+    bool backward = player.WarpBackward;
+    auto &warp = Warp[player.Warp];
+    auto &warp_enter = backward ? warp.Exit : warp.Entrance;
+    auto &warp_exit = backward ? warp.Entrance : warp.Exit;
+    auto &warp_dir_enter = backward ? warp.Direction2 : warp.Direction;
+    auto &warp_dir_exit = backward ? warp.Direction : warp.Direction2;
+
     // player(a).effect = 3      -- Warp Pipe
     // player(a).effect2 = 0     -- Entering
     // player(a).effect2 = 1     -- Move to next spot
     // player(a).effect2 => 100  -- Delay at next spot
     // player(a).effect2 = 2     -- Exiting
     // player(a).effect2 = 3     -- Done
-    if(Player[A].Effect2 == 0.0)
+    if(player.Effect2 == 0.0)
     {
-        if(Warp[Player[A].Warp].Direction == 3) // Moving down
+        if(warp_dir_enter == 3) // Moving down
         {
-            if(tempLocation.Height > (Warp[Player[A].Warp].Entrance.Y + Warp[Player[A].Warp].Entrance.Height) - (tempLocation.Y))
-                tempLocation.Height = (Warp[Player[A].Warp].Entrance.Y + Warp[Player[A].Warp].Entrance.Height) - (tempLocation.Y);
+            if(tempLocation.Height > (warp_enter.Y + warp_enter.Height) - (tempLocation.Y))
+                tempLocation.Height = (warp_enter.Y + warp_enter.Height) - (tempLocation.Y);
         }
-        else if(Warp[Player[A].Warp].Direction == 1) // Moving up
+        else if(warp_dir_enter == 1) // Moving up
         {
-            if(Warp[Player[A].Warp].Entrance.Y > tempLocation.Y)
+            if(warp_enter.Y > tempLocation.Y)
             {
-                Y2 = float(Warp[Player[A].Warp].Entrance.Y - tempLocation.Y);
-                tempLocation.Y = Warp[Player[A].Warp].Entrance.Y;
+                Y2 = float(warp_enter.Y - tempLocation.Y);
+                tempLocation.Y = warp_enter.Y;
                 tempLocation.Height = tempLocation.Height - double(Y2);
             }
         }
-        else if(Warp[Player[A].Warp].Direction == 4) // Moving right
-            tempLocation.Width = (Warp[Player[A].Warp].Entrance.X + Warp[Player[A].Warp].Entrance.Width) - (tempLocation.X);
-        else if(Warp[Player[A].Warp].Direction == 2) // Moving left
+        else if(warp_dir_enter == 4) // Moving right
+            tempLocation.Width = (warp_enter.X + warp_enter.Width) - (tempLocation.X);
+        else if(warp_dir_enter == 2) // Moving left
         {
-            X2 = float(Warp[Player[A].Warp].Entrance.X - tempLocation.X);
+            X2 = float(warp_enter.X - tempLocation.X);
             if(X2 < 0)
                 X2 = 0;
             else
-                tempLocation.X = Warp[Player[A].Warp].Entrance.X;
+                tempLocation.X = warp_enter.X;
         }
     }
-    else if(Maths::iRound(Player[A].Effect2) == 2)
+    else if(Maths::iRound(player.Effect2) == 2)
     {
-        if(Warp[Player[A].Warp].Direction2 == 3) // Moving up
+        if(warp_dir_exit == 3) // Moving up
         {
-            if(tempLocation.Height > (Warp[Player[A].Warp].Exit.Y + Warp[Player[A].Warp].Exit.Height) - (tempLocation.Y))
-                tempLocation.Height = (Warp[Player[A].Warp].Exit.Y + Warp[Player[A].Warp].Exit.Height) - (tempLocation.Y);
+            if(tempLocation.Height > (warp_exit.Y + warp_exit.Height) - (tempLocation.Y))
+                tempLocation.Height = (warp_exit.Y + warp_exit.Height) - (tempLocation.Y);
         }
-        else if(Warp[Player[A].Warp].Direction2 == 1) // Moving down
+        else if(warp_dir_exit == 1) // Moving down
         {
-            if(Warp[Player[A].Warp].Exit.Y > tempLocation.Y)
+            if(warp_exit.Y > tempLocation.Y)
             {
-                Y2 = float(Warp[Player[A].Warp].Exit.Y - tempLocation.Y);
-                tempLocation.Y = Warp[Player[A].Warp].Exit.Y;
+                Y2 = float(warp_exit.Y - tempLocation.Y);
+                tempLocation.Y = warp_exit.Y;
                 tempLocation.Height = tempLocation.Height - double(Y2);
             }
         }
-        else if(Warp[Player[A].Warp].Direction2 == 4) // Moving left
-            tempLocation.Width = (Warp[Player[A].Warp].Exit.X + Warp[Player[A].Warp].Exit.Width) - (tempLocation.X);
-        else if(Warp[Player[A].Warp].Direction2 == 2) // Moving right
+        else if(warp_dir_exit == 4) // Moving left
+            tempLocation.Width = (warp_exit.X + warp_exit.Width) - (tempLocation.X);
+        else if(warp_dir_exit == 2) // Moving right
         {
-            X2 = float(Warp[Player[A].Warp].Exit.X - tempLocation.X);
+            X2 = float(warp_exit.X - tempLocation.X);
             if(X2 < 0)
                 X2 = 0;
             else
-                tempLocation.X = Warp[Player[A].Warp].Exit.X;
+                tempLocation.X = warp_exit.X;
         }
     }
 
-    if(Maths::iRound(Player[A].Effect2) == 1 || Player[A].Effect2 >= 100)
+    if(Maths::iRound(player.Effect2) == 1 || player.Effect2 >= 100)
         tempLocation.Height = 0;
 
     if(tempLocation.Height < 0)
@@ -526,11 +658,11 @@ int pfrY(int plrFrame)
 
 void ScreenShot()
 {
-#ifndef __EMSCRIPTEN__
+#ifndef NO_SCREENSHOT
     frmMain.setTargetTexture();
     frmMain.makeShot();
     frmMain.setTargetScreen();
-    PlaySound(12);
+    PlaySound(SFX_GotItem);
 #endif
     TakeScreen = false;
 }

@@ -4,29 +4,30 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#ifndef NO_SDL
 #include <SDL2/SDL_scancode.h>
+#else
+#include <cstdint>
+typedef uint8_t Uint8;
+typedef uint32_t Uint32;
+#endif
 
 #include <string>
 #include <vector>
@@ -96,7 +97,10 @@ extern void DoEvents();
  */
 extern int showCursor(int show);
 
+#ifndef NO_SDL
 extern Uint8 getKeyState(SDL_Scancode key);
+#endif
+
 extern Uint8 getKeyStateI(int key);
 
 //Public Const KEY_PRESSED As Integer = &H1000    'For control information
@@ -223,29 +227,15 @@ extern std::string EoT;
 //    SpeedY As Double
 //End Type
 
-//Public Type EditorControls      'Controls for the editor
-struct EditorControls_t
-{
-//    Up As Boolean
-    bool Up = false;
-//    Down As Boolean
-    bool Down = false;
-//    Left As Boolean
-    bool Left = false;
-//    Right As Boolean
-    bool Right = false;
-//    Mouse1 As Boolean
-    bool Mouse1 = false;
-//End Type
-};
-
 // Structures moved into con_control.h
 
 //Public conKeyboard(1 To 2) As conKeyboard  'player 1 and 2's controls
 extern RangeArr<ConKeyboard_t, 1, maxLocalPlayers> conKeyboard;
+extern EditorConKeyboard_t editorConKeyboard;
 
 //Public conJoystick(1 To 2) As conJoystick
 extern RangeArr<ConJoystick_t, 1, maxLocalPlayers> conJoystick;
+extern EditorConJoystick_t editorConJoystick;
 
 //Public useJoystick(1 To 2) As Integer
 extern RangeArrI<int, 1, maxLocalPlayers, 0> useJoystick;
@@ -382,7 +372,7 @@ struct NPC_t
     bool TurnAround = false;
 //    Killed As Integer 'Flags the NPC to die a specific way.
     int Killed = 0;
-//    Active As Boolean 'If on screen
+//    Active As Boolean 'If on screen and active
     bool Active = false;
 //    Reset(1 To 2) As Boolean 'If it can display the NPC
     RangeArrI<bool, 1, 2, false> Reset;
@@ -399,7 +389,7 @@ struct NPC_t
 //    WallDeath As Integer
     int WallDeath = 0;
 //    Projectile As Boolean 'If the NPC is a projectile
-    int Projectile = 0;
+    bool Projectile = false;
 //    Effect As Integer 'For starting / stopping effects
     int Effect = 0;
 //    Effect2 As Double
@@ -645,6 +635,10 @@ struct Player_t
     int WarpCD = 0;
 //    Warp As Integer 'the warp the player is using
     int Warp = 0;
+// EXTRA: Is the backward warp mode
+    int WarpBackward = false;
+// EXTRA: True if shooted from the cannon
+    int WarpShooted = false;
 //    FireBallCD As Integer 'How long the player has to wait before he can shoot again
     int FireBallCD = 0;
 //    FireBallCD2 As Integer 'How long the player has to wait before he can shoot again
@@ -689,6 +683,8 @@ struct Background_t
     Location_t Location;
 //EXTRA: make a custom sorting priority
     int SortPriority = -1;
+//EXTRA: Preserved Z-Mode value
+    int zMode = 0;
 //EXTRA: sub-priority
     double zOffset = 0.0;
 //EXTRA: UID
@@ -725,6 +721,8 @@ struct Block_t
     int DefaultType = 0;
 //    DefaultSpecial As Integer
     int DefaultSpecial = 0;
+//! EXTRA: second special
+    int DefaultSpecial2 = 0;
 //'for event triggers
 //    TriggerHit As String
     std::string TriggerHit;
@@ -734,6 +732,8 @@ struct Block_t
     std::string TriggerLast;
 //    Layer As String
     std::string Layer;
+    int LayerIndex;
+    Location_t LocationInLayer;
 //    Hidden As Boolean
     bool Hidden = false;
 //    Type As Integer 'the block's type
@@ -742,6 +742,8 @@ struct Block_t
     Location_t Location;
 //    Special As Integer 'what is in the block?
     int Special = 0;
+//! EXTRA: second special
+    int Special2 = 0;
 //'for the shake effect after hitting ablock
 //    ShakeY As Integer
     int ShakeY = 0;
@@ -797,6 +799,9 @@ struct vScreen_t
     double Left = 0.0;
 //    Top As Double
     double Top = 0.0;
+// location on screen when vScreens are smaller due to level size
+    double ScreenTop = 0.0;
+    double ScreenLeft = 0.0;
 //    Width As Double
     double Width = 0.0;
 //    Height As Double
@@ -892,6 +897,7 @@ struct Warp_t
 //    maxStars As Integer
     int maxStars = 0;
 //EXTRA:
+    bool twoWay = false;
     bool noPrintStars = false;
     bool noEntranceScene = false;
     bool cannonExit = false;
@@ -971,6 +977,7 @@ struct EditorCursor_t
     std::string Layer;
 //    Mode As Integer
     int Mode = 0;
+    int SubMode = 0;
 //    Block As Block
     Block_t Block;
 //    Water As Water
@@ -1011,6 +1018,7 @@ struct WorldPlayer_t
     int Move2 = 0;
 //    Move3 As Boolean
     int Move3 = 0;
+    int LastMove = 0;
 //    LevelName As String
     std::string LevelName;
 //End Type
@@ -1067,10 +1075,14 @@ extern bool GamePaused;
 extern std::string MessageText;
 //Public NumSelectWorld As Integer
 extern int NumSelectWorld;
+extern int NumSelectWorldEditable;
+extern int NumSelectBattle;
 //Public SelectWorld(1 To 100) As SelectWorld
 struct SelectWorld_t;
 //extern RangeArr<SelectWorld_t, 1, maxSelectWorlds> SelectWorld;
 extern std::vector<SelectWorld_t> SelectWorld;
+extern std::vector<SelectWorld_t> SelectBattle;
+extern std::vector<SelectWorld_t> SelectWorldEditable;
 //Public ShowFPS As Boolean
 extern bool ShowFPS;
 //Public PrintFPS As Double
@@ -1121,6 +1133,8 @@ struct SelectWorld_t
 extern RangeArrI<int, 0, maxPlayers, 0> OwedMount;
 //Public OwedMountType(0 To maxPlayers) As Integer
 extern RangeArrI<int, 0, maxPlayers, 0> OwedMountType;
+//EXTRA: set this flag once modern autoscroll used, otherwise, legacy will be used
+extern bool AutoUseModern;
 //Public AutoX(0 To maxSections) As Single 'for autoscroll
 extern RangeArr<float, 0, maxSections> AutoX;
 //Public AutoY(0 To maxSections) As Single 'for autoscroll
@@ -1158,12 +1172,13 @@ extern bool RestartLevel;
 //Public LevelChop(0 To maxSections) As Single 'for drawing backgrounds when the level has been shrunk
 extern float LevelChop[maxSections + 1];
 //'collision detection optimization. creates a table of contents for blocks
+// replaced by trees
 //Public Const FLBlocks As Long = 8000
-const long FLBlocks = 10000;
+const int64_t OLD_FLBlocks = 8000;
 //Public FirstBlock(-FLBlocks To FLBlocks) As Integer
-extern RangeArr<int, -FLBlocks, FLBlocks> FirstBlock;
+// extern RangeArr<int, -FLBlocks, FLBlocks> FirstBlock;
 //Public LastBlock(-FLBlocks To FLBlocks) As Integer
-extern RangeArr<int, -FLBlocks, FLBlocks> LastBlock;
+// extern RangeArr<int, -FLBlocks, FLBlocks> LastBlock;
 //Public MidBackground As Integer 'for drawing backgrounds
 extern int MidBackground;
 //Public LastBackground As Integer 'last backgrounds to be drawn
@@ -1382,6 +1397,9 @@ extern RangeArr<double, 0, maxPlayers> qScreenX;
 extern RangeArr<double, 0, maxPlayers> qScreenY;
 //Public qScreen As Boolean 'Weather or not the screen needs adjusting
 extern bool qScreen;
+// allows screen position to change during qScreen
+extern RangeArr<vScreen_t, 0, 2> qScreenLoc;
+
 
 //Public BlockWidth(0 To maxBlockType) As Integer 'Block type width
 extern RangeArrI<int, 0, maxBlockType, 0> BlockWidth;
@@ -1510,6 +1528,10 @@ extern int numJoysticks;
 extern std::string FileName;
 //! EXTRA: A full filename (the "FileName" is now has the "base name" sense)
 extern std::string FileNameFull;
+//! EXTRA: World map preserved filename
+extern std::string FileNameWorld;
+//! EXTRA: World map preserved full path
+extern std::string FileNameFullWorld;
 //! EXTRA: Identify that episode is an intro level
 extern bool IsEpisodeIntro;
 //Public Coins As Integer 'number of coins
@@ -1720,8 +1742,6 @@ extern bool GodMode;
 extern bool GrabAll;
 //Public Cheater As Boolean 'if the player is a cheater
 extern bool Cheater;
-//EXTRA
-extern Uint32 RenderMode;
 //'--------------------------------
 //Public WorldCredits(1 To 5) As String
 extern RangeArr<std::string, 1, maxWorldCredits> WorldCredits;
@@ -2044,6 +2064,14 @@ extern int BattleIntro;
 extern int BattleOutro;
 //Public LevelName As String
 extern std::string LevelName;
+
+#ifndef FIXED_RES
+extern int ScreenW;
+extern int ScreenH;
+void Set_Resolution(int sw, int sh);
+#endif
+
+
 //Public Const curRelease As Integer = 64
 const int curRelease = 64;
 

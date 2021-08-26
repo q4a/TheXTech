@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "../globals.h"
@@ -34,7 +29,11 @@
 #include "../layers.h"
 #include "../compat.h"
 #include "../graphics.h"
+#include "../editor/editor.h"
 #include "level_file.h"
+#include "trees.h"
+#include "record.h"
+#include "../npc_id.h"
 
 #include <DirManager/dirman.h>
 #include <Utils/files.h>
@@ -44,9 +43,35 @@
 #include <PGE_File_Formats/file_formats.h>
 
 
+void bgoApplyZMode(Background_t *bgo, int smbx64sp)
+{
+    if(bgo->zMode == LevelBGO::ZDefault)
+        bgo->SortPriority = smbx64sp;
+    else
+    {
+        switch(bgo->zMode)
+        {
+        case LevelBGO::Background2:
+            bgo->SortPriority = 10;
+            break;
+        case LevelBGO::Background1:
+            bgo->SortPriority = 30;
+            break;
+        case LevelBGO::Foreground1:
+            bgo->SortPriority = 125;
+            break;
+        case LevelBGO::Foreground2:
+            bgo->SortPriority = 200;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 void addMissingLvlSuffix(std::string &fileName)
 {
-    if(!fileName.empty() && !Files::hasSuffix(fileName, ".lvl") && !Files::hasSuffix(fileName, ".lvlx"))
+    if(!fileName.empty() && !Files::hasSuffix(fileName, ".lvl") && !Files::hasSuffix(fileName, ".lvlx") && !Files::hasSuffix(fileName, "tst"))
     {
         bool isAbsolute = Files::isAbsolute(fileName);
         bool lvlxExists;
@@ -128,6 +153,9 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         FullFileName = FileNamePath + FileName + ".lvlx";
     }
 
+    // load compatibility settings from previous recording
+    record_preload();
+
     IsEpisodeIntro = (StartLevel == FileNameFull);
 
     numBlock = 0;
@@ -177,7 +205,10 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         Background2REAL[B] = Background2[B];
         NoTurnBack[B] = s.lock_left_scroll;
         UnderWater[B] = s.underwater;
-        CustomMusic[B] = dirEpisode.resolveFileCase(s.music_file);
+        if(s.music_file.empty())
+            CustomMusic[B] = "";
+        else
+            CustomMusic[B] = dirEpisode.resolveFileCase(s.music_file);
         B++;
         if(B > maxSections)
             break;
@@ -205,6 +236,25 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
             break;
     }
 
+    A = 0;
+    for(auto &l : lvl.layers)
+    {
+        auto &layer = Layer[A];
+
+        layer = Layer_t();
+        // does this clear all of those lists???
+
+        layer.Name = l.name;
+        layer.Hidden = l.hidden;
+        // hide layers after everything is done
+        A++;
+        numLayers++;
+        if(numLayers > maxLayers)
+        {
+            numLayers = maxLayers;
+            break;
+        }
+    }
 
     for(auto &b : lvl.blocks)
     {
@@ -225,6 +275,7 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         block.Location.Width = double(b.w);
         block.Type = int(b.id);
         block.DefaultType = block.Type;
+
         block.Special = int(b.npc_id > 0 ? b.npc_id + 1000 : -1 * b.npc_id);
         if(block.Special == 100)
             block.Special = 1009;
@@ -235,6 +286,12 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         if(block.Special == 105)
             block.Special = 1095;
         block.DefaultSpecial = block.Special;
+
+        block.Special2 = 0;
+        if(b.id == 90 && lvl.meta.RecentFormat == LevelData::SMBX64 && lvl.meta.RecentFormatVersion < 20)
+            block.Special2 = 1; // Restore bricks algorithm for turn blocks for SMBX19 and lower
+        block.DefaultSpecial2 = block.Special2;
+
         block.Invis = b.invisible;
         block.Slippy = b.slippery;
         block.Layer = b.layer;
@@ -271,30 +328,10 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
 
         bgo.uid = int(b.meta.array_id);
 
+        bgo.zMode = b.z_mode;
         bgo.zOffset = b.z_offset;
 
-        if(b.z_mode == LevelBGO::ZDefault)
-            bgo.SortPriority = int(b.smbx64_sp);
-        else
-        {
-            switch(b.z_mode)
-            {
-            case LevelBGO::Background2:
-                bgo.SortPriority = 10;
-                break;
-            case LevelBGO::Background1:
-                bgo.SortPriority = 30;
-                break;
-            case LevelBGO::Foreground1:
-                bgo.SortPriority = 125;
-                break;
-            case LevelBGO::Foreground2:
-                bgo.SortPriority = 200;
-                break;
-            default:
-                break;
-            }
-        }
+        bgoApplyZMode(&bgo, int(b.smbx64_sp));
 
         if(IF_OUTRANGE(bgo.Type, 1, maxBackgroundType)) // Drop ID to 1 for BGOs of out of range IDs
         {
@@ -369,6 +406,15 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
                 npc.Special7 = n.special_data;
         }
 
+        if(npc.Type == 60)
+        {
+            if(lvl.meta.RecentFormat == LevelData::SMBX64 &&
+               lvl.meta.RecentFormatVersion < 9)
+                npc.Special7 = 1.0; // Workaround for yellow platform at The Invasion 1
+            else
+                npc.Special7 = 0.0;
+        }
+
         npc.Generator = n.generator;
         if(npc.Generator)
         {
@@ -399,10 +445,22 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         npc.Location.Height = NPCHeight[npc.Type];
         npc.DefaultLocation = npc.Location;
         npc.DefaultDirection = npc.Direction;
-        npc.TimeLeft = 1;
-        npc.Active = true;
-        npc.JustActivated = 1;
+        if(g_compatibility.NPC_activate_mode == NPC_activate_modes::onscreen)
+        {
+            npc.TimeLeft = 1;
+            npc.Active = true;
+            npc.JustActivated = 1;
+        }
+        else
+        {
+            npc.TimeLeft = 0;
+            npc.Active = false;
+            npc.JustActivated = 0;
+            npc.Reset[1] = true;
+            npc.Reset[2] = true;
+        }
 
+        syncLayers_NPC(numNPCs);
         CheckSectionNPC(numNPCs);
 
         if(npc.Type == 192) // Is a checkpoint
@@ -430,7 +488,7 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         }
     }
 
-    std::vector<int> twoWayWarps;
+
     for(auto &w : lvl.doors)
     {
         numWarps++;
@@ -453,6 +511,7 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         warp.Direction = w.idirect;
         warp.Direction2 = w.odirect;
         warp.Effect = w.type;
+        warp.twoWay = w.two_way;
 
         // Work around filenames with no extension suffix and case missmatch
         if(!Strings::endsWith(w.lname, ".lvl") && !Strings::endsWith(w.lname, ".lvlx"))
@@ -495,31 +554,10 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         warp.Entrance.Width = 32;
         warp.Exit.Height = 32;
         warp.Exit.Width = 32;
-        if(w.two_way)
-            twoWayWarps.push_back(numWarps);
+
+        syncLayers_Warp(numWarps);
     }
 
-    if(!twoWayWarps.empty())
-    {
-        for(auto &tww : twoWayWarps)
-        {
-            numWarps++;
-            if(numWarps > maxWarps)
-            {
-                numWarps = maxWarps;
-                break;
-            }
-
-            auto &w = Warp[tww];
-            auto &warp = Warp[numWarps];
-
-            warp = w;
-            warp.Exit = w.Entrance;
-            warp.Entrance = w.Exit;
-            warp.Direction2 = w.Direction;
-            warp.Direction = w.Direction2;
-        }
-    }
 
     for(auto &w : lvl.physez)
     {
@@ -541,33 +579,10 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         water.Buoy = w.buoy;
         water.Quicksand = w.env_type;
         water.Layer = w.layer;
+        syncLayers_Water(numWater);
     }
 
-    A = 0;
-    for(auto &l : lvl.layers)
-    {
-        auto &layer = Layer[A];
-
-        layer = Layer_t();
-
-        layer.Name = l.name;
-        layer.Hidden = l.hidden;
-        if(layer.Hidden)
-        {
-            HideLayer(layer.Name, true);
-        }
-//        if(LevelEditor == true || MagicHand == true)
-//        {
-//            // Add into listbox
-//        }
-        A++;
-        numLayers++;
-        if(numLayers > maxLayers)
-        {
-            numLayers = maxLayers;
-            break;
-        }
-    }
+    // layers added earlier, will be hidden later
 
     A = 0;
     for(auto &e : lvl.events)
@@ -614,25 +629,39 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         if(maxSets > numSections)
             maxSets = numSections;
 
-        for(B = 0; B <= numSections; B++)
+        for(B = 0; B <= maxSections; B++)
         {
-            event.Music[B] = LevelEvent_Sets::LESet_Nothing;
-            event.Background[B] = LevelEvent_Sets::LESet_Nothing;
-            event.level[B].X = LevelEvent_Sets::LESet_Nothing;
-            event.level[B].Y = 0;
-            event.level[B].Height = 0;
-            event.level[B].Width = 0;
+            auto &s = event.section[B];
+            s.music_id = LevelEvent_Sets::LESet_Nothing;
+            s.background_id = LevelEvent_Sets::LESet_Nothing;
+            s.music_file.clear();
+            s.position.X = LevelEvent_Sets::LESet_Nothing;
+            s.position.Y = 0;
+            s.position.Height = 0;
+            s.position.Width = 0;
         }
 
         for(B = 0; B < maxSets; B++)
         {
+            auto &ss = event.section[B];
             auto &s = e.sets[size_t(B)];
-            event.Music[B] = int(s.music_id);
-            event.Background[B] = int(s.background_id);
-            event.level[B].X = s.position_left;
-            event.level[B].Y = s.position_top;
-            event.level[B].Height = s.position_bottom;
-            event.level[B].Width = s.position_right;
+            ss.music_id = int(s.music_id);
+            ss.background_id = int(s.background_id);
+            ss.music_file = s.music_file;
+
+            auto &l = ss.position;
+            l.X = s.position_left;
+            l.Y = s.position_top;
+            l.Height = s.position_bottom;
+            l.Width = s.position_right;
+
+            ss.autoscroll = s.autoscrol;
+            // Simple style is only supported yet
+            if(s.autoscroll_style == LevelEvent_Sets::AUTOSCROLL_SIMPLE)
+            {
+                ss.autoscroll_x = s.autoscrol_x;
+                ss.autoscroll_y = s.autoscrol_y;
+            }
         }
 
         event.TriggerEvent = e.trigger;
@@ -669,74 +698,33 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
         }
     }
 
-    FindBlocks();
+    // no longer needed
+    // FindBlocks();
     qSortBackgrounds(1, numBackground);
     UpdateBackgrounds();
     FindSBlocks();
+    syncLayersTrees_AllBlocks();
+    syncLayers_AllBGOs();
+
+    // Do this before adding locks,
+    // which should reproduce an obscure vanilla bug
+    // that may not have been discovered yet.
+    for (A = 0; A < numLayers; A++)
+    {
+        auto &layer = Layer[A];
+        if(layer.Hidden)
+        {
+            HideLayer(layer.Name, true);
+        }
+    }
 
 
-//    if(LevelEditor == true || MagicHand == true)
-//    {
-//        frmEvents::lstEvent.ListIndex = 0;
-//        frmLayers::lstLayer.ListIndex = 0;
-//        frmEvents::RefreshEvents;
-//    }
-
-//    if(LevelEditor == true)
-//    {
-//        ResetNPC EditorCursor.NPC.Type;
-//        curSection = 0;
-//        vScreenY[1] = -(level[curSection].Height - 600);
-//        vScreenX[1] = -level[curSection].X;
-//        numWarps = numWarps + 1;
-//        for(A = 0; A < frmLevelSettings::optBackground.Count; A++)
-//        {
-//            if(Background2[0] == A)
-//                frmLevelSettings::optBackground(A).Value = true;
-//            else
-//                frmLevelSettings::optBackground(A).Value = false;
-//        }
-//        for(A = 1; A <= frmLevelSettings::optBackgroundColor.Count; A++)
-//        {
-//            if(bgColor[0] == frmLevelSettings::optBackgroundColor(A).BackColor)
-//            {
-//                frmLevelSettings::optBackgroundColor(A).Value = true;
-//                break;
-//            }
-//        }
-//        frmLevelSettings::optMusic(bgMusic[0]).Value = true;
-//        if(LevelWrap[0] == true)
-//            frmLevelSettings::cmdWrap.Caption = "On";
-//        else
-//            frmLevelSettings::cmdWrap.Caption = "Off";
-//        if(UnderWater[0] == true)
-//            frmLevelSettings::cmdWater.Caption = "On";
-//        else
-//            frmLevelSettings::cmdWater.Caption = "Off";
-//        if(OffScreenExit[0] == true)
-//            frmLevelSettings::cmdExit.Caption = "On";
-//        else
-//            frmLevelSettings::cmdExit.Caption = "Off";
-//        frmLevelSettings::txtMusic.Enabled = false;
-//        frmLevelSettings::txtMusic.Text = CustomMusic[0];
-//        frmLevelSettings::txtMusic.Enabled = true;
-//        if(nPlay.Online == true && nPlay.Mode == 1) // sync to server
-//        {
-//            Netplay::sendData "j" + LB + "d" + LocalNick + " has loaded " + FileName + "." + LB + "w1" + LB + EoT;
-//            frmChat.txtChat = frmChat::txtChat + LocalNick + " has loaded " + FileName + "." + LB;
-//            frmChat::txtChat.SelStart = frmChat::txtChat.Text.Length;
-//            PlaySound(47);
-//            SoundPause[47] = 2;
-//            for(A = 1; A <= 15; A++)
-//            {
-//                if(nPlay.ClientCon(A) == true)
-//                {
-//                    Netplay::InitSync A;
-//                }
-//            }
-//        }
-//    }
-//    else
+    if (LevelEditor)
+    {
+        ResetSectionScrolls();
+        SetSection(0);
+    }
+    else
     {
         FindStars();
         LevelMacro = LEVELMACRO_OFF;
@@ -765,6 +753,7 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
                 bgo.Location.Y = Warp[A].Entrance.Y - bgo.Location.Height;
                 bgo.Location.X = Warp[A].Entrance.X + Warp[A].Entrance.Width / 2.0 - bgo.Location.Width / 2.0;
                 bgo.Type = 160;
+                syncLayers_BGO(B);
             }
             else if(Warp[A].Effect == 2 && Warp[A].Locked) // For locks
             {
@@ -777,6 +766,7 @@ bool OpenLevelData(LevelData &lvl, const std::string FilePath)
                 bgo.Location = Warp[A].Entrance;
                 bgo.Type = 98;
                 bgo.Location.Width = 16;
+                syncLayers_BGO(B);
             }
         }
     }
@@ -794,14 +784,15 @@ void ClearLevel()
 {
     int A = 0;
     int B = 0;
-    NPC_t blankNPC = NPC_t();
-    Water_t blankwater = Water_t();
-    Warp_t blankWarp = Warp_t();
-    Block_t blankBlock = Block_t();
-    Background_t BlankBackground = Background_t();
-    Location_t BlankLocation = Location_t();
-    Events_t blankEvent = Events_t();
-    NPCScore[274] = 6;
+    const NPC_t blankNPC = NPC_t();
+    const Water_t blankwater = Water_t();
+    const Warp_t blankWarp = Warp_t();
+    const Block_t blankBlock = Block_t();
+    const Background_t BlankBackground = Background_t();
+    const Location_t BlankLocation = Location_t();
+    const Events_t blankEvent = Events_t();
+    const Effect_t blankEffect = Effect_t();
+    NPCScore[NPCID_DRAGONCOIN] = 6;
     LevelName.clear();
     ResetCompat();
     LoadNPCDefaults();
@@ -809,8 +800,11 @@ void ClearLevel()
     noUpdate = true;
     BlocksSorted = true;
     qScreen = false;
+    AutoUseModern = false;
+
     UnloadCustomGFX();
     doShakeScreenClear();
+    treeLevelCleanAll();
 
     numSections = 0;
 
@@ -833,9 +827,11 @@ void ClearLevel()
         Events[A] = blankEvent;
         for(B = 0; B <= maxSections; B++)
         {
-            Events[A].Background[B] = -1;
-            Events[A].Music[B] = -1;
-            Events[A].level[B].X = -1;
+            auto &ss = Events[A].section[B];
+            ss.background_id = EventSection_t::LESet_Nothing;
+            ss.music_id = EventSection_t::LESet_Nothing;
+            ss.music_file.clear();
+            ss.position.X = EventSection_t::LESet_Nothing;
         }
     }
 
@@ -928,7 +924,10 @@ void ClearLevel()
 
     for(A = 1; A <= numWarps; A++)
         Warp[A] = blankWarp;
+    numWarps = 0;
 
+    for(A = 1; A <= numEffects; A++)
+        Effect[A] = blankEffect;
     numEffects = 0;
     numBackground = 0;
     numLocked = 0;

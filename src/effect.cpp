@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "globals.h"
@@ -29,6 +24,7 @@
 #include "sound.h"
 #include "game_main.h"
 #include "collision.h"
+#include "layers.h"
 
 // Updates the effects
 void UpdateEffects()
@@ -67,8 +63,9 @@ void UpdateEffects()
                     NPC[numNPCs].Active = true;
                     NPC[numNPCs].TimeLeft = 100;
                     NPC[numNPCs].Frame = 0;
+                    syncLayers_NPC(numNPCs);
                     CheckSectionNPC(numNPCs);
-                    PlaySound(20);
+                    PlaySound(SFX_BossBeat);
                 }
             }
         }
@@ -163,7 +160,7 @@ void UpdateEffects()
             if(e.Life == 100)
             {
                 e.Location.SpeedY = -8;
-                PlaySound(63);
+                PlaySound(SFX_WartKilled);
             }
 
         }
@@ -710,6 +707,7 @@ void UpdateEffects()
                         NPC[numNPCs].Location.X = NPC[numNPCs].Location.X - NPC[numNPCs].Location.Width / 2.0 + 16;
                         if(NPC[numNPCs].Type == 34)
                             NPC[numNPCs].Location.SpeedY = -6;
+                        syncLayers_NPC(numNPCs);
                         CheckSectionNPC(numNPCs);
                     }
                 }
@@ -754,6 +752,7 @@ void UpdateEffects()
                 NPC[numNPCs].Type = e.NewNpc;
                 NPC[numNPCs].Location.Height = NPCHeight[NPC[numNPCs].Type];
                 NPC[numNPCs].Location.Width = NPCWidth[NPC[numNPCs].Type];
+                syncLayers_NPC(numNPCs);
                 CheckSectionNPC(numNPCs);
             }
             if(e.NewNpc == 98)
@@ -894,12 +893,12 @@ void NewEffect(int A, Location_t Location, float Direction, int NewNpc, bool Sha
         if(A == 56)
         {
             if(Effect[numEffects].NewNpc != 0 && Effect[numEffects].NewNpc != 96)
-                PlaySound(51);
+                PlaySound(SFX_YoshiEgg);
             else
-                PlaySound(36);
+                PlaySound(SFX_Smash);
         }
         else if(A == 58)
-            PlaySound(48);
+            PlaySound(SFX_Yoshi);
     }
     else if(A == 136) // Roto Disk
     {
@@ -1006,7 +1005,7 @@ void NewEffect(int A, Location_t Location, float Direction, int NewNpc, bool Sha
     }
     else if(A == 2 || A == 6 || A == 23 || A == 35 || A == 37 || A == 39 || A == 41 || A == 43 || A == 45 || A == 52 || A == 62 || A == 84 || A == 126) // Goomba smash effect
     {
-        PlaySound(2); // Stomp sound
+        PlaySound(SFX_Stomp); // Stomp sound
         numEffects++;
         Effect[numEffects].Shadow = Shadow;
         Effect[numEffects].Location.X = Location.X;
@@ -1282,7 +1281,7 @@ void NewEffect(int A, Location_t Location, float Direction, int NewNpc, bool Sha
                 Effect[numEffects].Location.X = Effect[numEffects].Location.X + Effect[numEffects].Location.SpeedX * 3;
                 Effect[numEffects].Location.Y = Effect[numEffects].Location.Y + Effect[numEffects].Location.SpeedY * 3;
 
-                Effect[numEffects].Frame = iRand() % 4;
+                Effect[numEffects].Frame = iRand(4);
                 Effect[numEffects].Type = A;
             }
         }
@@ -1354,7 +1353,12 @@ void NewEffect(int A, Location_t Location, float Direction, int NewNpc, bool Sha
         Effect[numEffects].Location.Height = EffectHeight[A];
         Effect[numEffects].Location.X = Location.X + Location.Width / 2.0 - Effect[numEffects].Location.Width / 2.0;
         Effect[numEffects].Location.Y = Location.Y + Location.Height - Effect[numEffects].Location.Height;
-        if(Location.SpeedY != -5.1)
+        if(fEqual(Location.SpeedY, 0.123))
+        {
+            Effect[numEffects].Location.SpeedY = 1;
+            Effect[numEffects].Location.SpeedX = 0;
+        }
+        else if(Location.SpeedY != -5.1)
         {
             Effect[numEffects].Location.SpeedY = -11;
             Effect[numEffects].Location.SpeedX = Location.SpeedX;
@@ -1497,9 +1501,9 @@ void NewEffect(int A, Location_t Location, float Direction, int NewNpc, bool Sha
         Effect[numEffects].Location.SpeedY = -2 - dRand() * 10;
         Effect[numEffects].Location.SpeedX = dRand() * 8 - 4;
         Effect[numEffects].Frame = 0;
-        if((iRand() % 2) == 1)
+        if((iRand(2)) == 1)
             Effect[numEffects].Frame = 7;
-        Effect[numEffects].Frame += iRand() % 7;
+        Effect[numEffects].Frame += iRand(7);
         Effect[numEffects].Life = 300;
         Effect[numEffects].Type = A;
     }
@@ -1786,7 +1790,7 @@ void NewEffect(int A, Location_t Location, float Direction, int NewNpc, bool Sha
         Effect[numEffects].Location.SpeedX = 3 * -Direction;
         Effect[numEffects].Life = 200;
         Effect[numEffects].Type = A;
-        PlaySound(63);
+        PlaySound(SFX_WartKilled);
     }
 }
 

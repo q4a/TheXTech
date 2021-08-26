@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef LIMITS_H
@@ -68,7 +63,11 @@ const int maxNPCType = 302;
 //Public Const maxEffectType As Integer = 200 'Maximum number of effect types
 const int maxEffectType = 200;
 //Public Const maxWarps As Integer = 200 'Maximum number of warps
-const int maxWarps = 2000; // 200
+#ifndef LOW_MEM
+const int maxWarps = 2000;
+#else
+const int maxWarps = 200;
+#endif
 //Public Const numBackground2 As Integer = 100  'Total # of backgrounds
 const int numBackground2 = 100;
 //Public Const numCharacters As Integer = 5 'Maximum number of player characters
@@ -86,7 +85,11 @@ const int maxWorldMusic = 1000;
 //Public Const numSounds As Integer = 100
 const int numSounds = 100;
 //Public Const maxSections As Integer = 20
+#ifndef LOW_MEM
 const int maxSections = 200;
+#else
+const int maxSections = 20;
+#endif
 //Public Const maxTileType As Integer = 400
 const int maxTileType = 400;
 //Public Const maxLevelType As Integer = 100
@@ -98,9 +101,16 @@ const int maxTiles = 20000;
 //Public Const maxScenes As Integer = 5000
 const int maxScenes = 5000;
 
+#ifdef __3DS__
+const int Max3DOffset = 20;
+const int ScreenW = 800 + 2 * Max3DOffset;
+const int ScreenH = 480;
+#elif defined(FIXED_RES)
 //Public Const ScreenW As Integer = 800  'Game Screen Width
 const int ScreenW = 800;
 //Public Const ScreenH As Integer = 600  'Game Screen Height
 const int ScreenH = 600;
+#endif
+
 
 #endif // LIMITS_H

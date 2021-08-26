@@ -21,6 +21,8 @@
 #define APP_PATH_H
 
 #include <string>
+#include <DirManager/dirman.h>
+#include <vector>
 
 extern std::string  ApplicationPathSTD;
 
@@ -33,11 +35,16 @@ public:
     static std::string userAppDirSTD();
     static std::string assetsRoot();
     static void setAssetsRoot(const std::string &root);
+    static std::string logsDir();
     static std::string languagesDir();
     static std::string screenshotsDir();
     static std::string gifRecordsDir();
     static std::string gameSaveRootDir();
+    static std::string gameplayRecordsRootDir();
     static std::string userWorldsRootDir();
+#ifdef __3DS__
+    static const std::vector<std::string>& worldRootDirs();
+#endif
     static std::string userBattleRootDir();
     static void install();
     static bool checkPortable();
@@ -52,6 +59,11 @@ private:
      * @brief Makes settings path if not exists
      */
     static void initSettingsPath();
+#ifdef __3DS__
+    // load any user worlds from .romfs files in the userDir.
+    static void findUserWorlds(DirMan userDir);
+    static std::vector<std::string> m_worldRootDirs;
+#endif
     //! Full path to settings INI file
     static std::string m_settingsPath;
     static std::string m_userPath;

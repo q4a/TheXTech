@@ -4,30 +4,33 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef NO_SDL
 #include <SDL2/SDL_timer.h>
+#else
+#include "SDL_supplement.h"
+#endif
+
+#ifndef NO_INTPROC
+#include <InterProcess/intproc.h>
+#endif
 
 #include <Logger/logger.h>
 #include <Utils/files.h>
-#include <InterProcess/intproc.h>
+#include <AppPath/app_path.h>
 #include <pge_delay.h>
 #include <fmt_format_ne.h>
 
@@ -50,10 +53,20 @@
 #include "load_gfx.h"
 #include "player.h"
 #include "sound.h"
-#include "editor.h"
+#include "video.h"
+#include "editor/editor.h"
 #include "custom.h"
 #include "main/level_file.h"
 #include "main/speedrunner.h"
+#include "main/menu_main.h"
+#include "main/game_info.h"
+#include "main/record.h"
+#include "main/trees.h"
+#include "rand.h"
+
+#include <PGE_File_Formats/file_formats.h>
+
+#include "editor/new_editor.h"
 
 #include "pseudo_vb.h"
 
@@ -65,7 +78,7 @@ void SizableBlocks();
 
 static int loadingThread(void *waiter_ptr)
 {
-#ifndef PGE_NO_THREADING
+#if !defined(PGE_NO_THREADING)
     SDL_atomic_t *waiter = (SDL_atomic_t *)waiter_ptr;
 #else
     UNUSED(waiter_ptr);
@@ -78,8 +91,12 @@ static int loadingThread(void *waiter_ptr)
     SizableBlocks();
     LoadGFX(); // load the graphics from file
     SetupVars(); //Setup Variables
+#ifdef PRELOAD_LEVELS
+    FindWorlds();
+    FindLevels();
+#endif
 
-#ifndef PGE_NO_THREADING
+#if !defined(PGE_NO_THREADING)
     if(waiter)
         SDL_AtomicSet(waiter, 0);
 #endif
@@ -103,8 +120,15 @@ int GameMain(const CmdLineSetup_t &setup)
     noSound = setup.noSound;
     neverPause = setup.neverPause;
 
+    CompatSetEnforcedLevel(setup.compatibilityLevel);
+
     g_speedRunnerMode = setup.speedRunnerMode;
+    g_drawController |= setup.showControllerState;
     speedRun_setSemitransparentRender(setup.speedRunnerSemiTransparent);
+
+    g_recordControlReplay = setup.recordReplay;
+    g_recordControlRecord = setup.recordRecord;
+    g_recordReplayId = setup.recordReplayId;
 
     ResetCompat();
 
@@ -115,6 +139,7 @@ int GameMain(const CmdLineSetup_t &setup)
     //        DoEvents
     //    Loop While StartMenu = False 'wait until the player clicks a button
 
+    initMainMenu();
     StartMenu = true;
 
     initAll();
@@ -138,7 +163,7 @@ int GameMain(const CmdLineSetup_t &setup)
     LoadingInProcess = true;
 
     ShowFPS = setup.testShowFPS;
-    MaxFPS = setup.testMaxFPS;
+    MaxFPS = setup.testMaxFPS; // || (g_videoSettings.renderModeObtained == RENDER_ACCELERATED_VSYNC);
 
     InitControls(); // init player's controls
     DoEvents();
@@ -148,9 +173,11 @@ int GameMain(const CmdLineSetup_t &setup)
 
     while(!MenuMouseDown)
     {
+        frmMain.setTargetTexture();
         frmMain.clearBuffer();
         SuperPrint("Click to start a game", 3, 230, 280);
         frmMain.repaint();
+        frmMain.setTargetScreen();
         DoEvents();
         PGE_Delay(10);
     }
@@ -159,7 +186,7 @@ int GameMain(const CmdLineSetup_t &setup)
     if(!noSound)
         InitMixerX();
 
-#ifndef PGE_NO_THREADING
+#if !defined(PGE_NO_THREADING)
     gfxLoaderThreadingMode = true;
 #endif
     frmMain.show(); // Don't show window until playing an initial sound
@@ -170,7 +197,7 @@ int GameMain(const CmdLineSetup_t &setup)
             PlayInitSound();
     }
 
-#ifndef PGE_NO_THREADING
+#if !defined(PGE_NO_THREADING)
     {
         SDL_Thread*     loadThread;
         int             threadReturnValue;
@@ -205,8 +232,10 @@ int GameMain(const CmdLineSetup_t &setup)
 
     LevelSelect = true; // world map is to be shown
 
+#ifndef NO_INTPROC
     if(setup.interprocess)
         IntProc::init();
+#endif
 
     LoadingInProcess = false;
 
@@ -245,11 +274,46 @@ int GameMain(const CmdLineSetup_t &setup)
             showCursor(1);
         }
 
-//        If LevelEditor = True Then 'Load the level editor
-//            [USELESS!]
+        if(LevelEditor) // Load the level editor
+        {
+            if(resChanged)
+                ChangeScreen();
+            BattleMode = false;
+            SingleCoop = 0;
+            numPlayers = 0;
+            ScreenType = 0;
+            DoEvents();
+            SetupEditorGraphics(); //Set up the editor graphics
+            SetupScreens();
+            MagicHand = false;
+            MouseRelease = false;
+            ScrollRelease = false;
+
+            // coming back from a level test
+            if(!WorldEditor)
+            {
+                EditorRestore();
+            }
+
+            // Run the frame-loop
+            runFrameLoop(&EditorLoop,
+                         nullptr,
+                        []()->bool{ return LevelEditor || WorldEditor;}, nullptr,
+                        nullptr,
+                        nullptr);
+
+            MenuMode = MENU_INTRO;
+            LevelEditor = false;
+            WorldEditor = false;
+            frmMain.clearBuffer();
+            frmMain.repaint();
+#ifdef PRELOAD_LEVELS
+            FindWorlds();
+#endif
+        }
 
         // TheXTech Credits
-        if(GameOutro)
+        else if(GameOutro)
         {
             ShadowMode = false;
             GodMode = false;
@@ -299,14 +363,14 @@ int GameMain(const CmdLineSetup_t &setup)
                 if(A == 4)
                 {
                     p.Mount = 1;
-                    p.MountType = int(iRand() % 3) + 1;
+                    p.MountType = int(iRand(3)) + 1;
                 }
 
                 p.Character = A;
                 if(A == 2)
                 {
                     p.Mount = 3;
-                    p.MountType = int(iRand() % 8) + 1;
+                    p.MountType = int(iRand(8)) + 1;
                 }
 
                 p.HeldBonus = 0;
@@ -362,7 +426,7 @@ int GameMain(const CmdLineSetup_t &setup)
             MenuMouseBack = false;
             BattleMode = false;
 
-            if(MenuMode != 4)
+            if(MenuMode != MENU_BATTLE_MODE)
             {
                 PlayerCharacter = 0;
                 PlayerCharacter2 = 0;
@@ -403,7 +467,9 @@ int GameMain(const CmdLineSetup_t &setup)
                 Player[A] = blankPlayer;
             }
 
-            numPlayers = 6;
+            numPlayers = g_gameInfo.introMaxPlayersCount;
+            if(!g_gameInfo.introEnableActivity || g_gameInfo.introMaxPlayersCount < 1)
+                numPlayers = 1;// one deadman should be
 
             auto introPath = AppPath + "intro.lvlx";
             if(!Files::fileExists(introPath))
@@ -417,8 +483,8 @@ int GameMain(const CmdLineSetup_t &setup)
             For(A, 1, numPlayers)
             {
                 Player_t &p = Player[A];
-                p.State = (iRand() % 6) + 2;
-                p.Character = (iRand() % 5) + 1;
+                p.State = (iRand(6)) + 2;
+                p.Character = (iRand(5)) + 1;
 
                 if(A >= 1 && A <= 5)
                     p.Character = A;
@@ -433,12 +499,14 @@ int GameMain(const CmdLineSetup_t &setup)
                 do
                 {
                     tempBool = true;
-                    for(int B = 1; B <= numBlock; ++B)
+                    // for(int B = 1; B <= numBlock; ++B)
+                    for(Block_t* block : treeBlockQuery(p.Location, false, 64))
                     {
-                        if(CheckCollision(p.Location, Block[B].Location))
+                        if(CheckCollision(p.Location, block->Location))
                         {
-                            p.Location.Y = Block[B].Location.Y - p.Location.Height - 0.1;
+                            p.Location.Y = block->Location.Y - p.Location.Height - 0.1;
                             tempBool = false;
+                            break;
                         }
                     }
                 } while(!tempBool);
@@ -457,9 +525,13 @@ int GameMain(const CmdLineSetup_t &setup)
             // Update graphics before loop begin (to process inital lazy-unpacking of used sprites)
             UpdateGraphics(true);
             resetFrameTimer();
+            // Clear the speed-runner timer
+            speedRun_resetTotal();
 
             // Main menu loop
+            pLogDebug("Entering GameMenu loop.");
             runFrameLoop(&MenuLoop, nullptr, []()->bool{ return GameMenu;});
+            pLogDebug("Exiting GameMenu loop.");
             if(!GameIsActive)
             {
                 speedRun_saveStats();
@@ -488,6 +560,13 @@ int GameMain(const CmdLineSetup_t &setup)
                 OwedMountType[A] = 0;
             }
 
+            if(!NoMap)
+            {
+                // Restore the previously preserved world map paths
+                FileNameFull = FileNameFullWorld;
+                FileName = FileNameWorld;
+            }
+
             LoadCustomCompat();
             FindCustomPlayers();
             LoadCustomGFX();
@@ -503,7 +582,7 @@ int GameMain(const CmdLineSetup_t &setup)
                 Player[2].Vine = 0;
 
                 if(!GoToLevelNoGameThing)
-                    PlaySound(28);
+                    PlaySound(SFX_LevelSelect);
                 SoundPause[26] = 2000;
 
                 LevelSelect = false;
@@ -569,6 +648,8 @@ int GameMain(const CmdLineSetup_t &setup)
             CheatString.clear();
             EndLevel = false;
 
+            record_init(); // initializes level data recording
+
             if(numPlayers == 1)
                 ScreenType = 0; // Follow 1 player
             else if(numPlayers == 2)
@@ -609,42 +690,45 @@ int GameMain(const CmdLineSetup_t &setup)
                     else
                         p.Warp = ReturnWarp;
 
-                    if(Warp[p.Warp].Effect == 1)
+                    p.WarpBackward = false;
+                    auto &warp = Warp[p.Warp];
+
+                    if(warp.Effect == 1)
                     {
-                        if(Warp[p.Warp].Direction2 == 1) // DOWN
+                        if(warp.Direction2 == 1) // DOWN
                         {
 //                                .Location.X = Warp(.Warp).Exit.X + Warp(.Warp).Exit.Width / 2 - .Location.Width / 2
-                            p.Location.X = Warp[p.Warp].Exit.X + (Warp[p.Warp].Exit.Width / 2) - (p.Location.Width / 2);
+                            p.Location.X = warp.Exit.X + (warp.Exit.Width / 2) - (p.Location.Width / 2);
 //                                .Location.Y = Warp(.Warp).Exit.Y - .Location.Height - 8
-                            p.Location.Y = Warp[p.Warp].Exit.Y - p.Location.Height - 8;
+                            p.Location.Y = warp.Exit.Y - p.Location.Height - 8;
                         }
 //                            ElseIf Warp(.Warp).Direction2 = 3 Then
-                        if(Warp[p.Warp].Direction2 == 3) // UP
+                        if(warp.Direction2 == 3) // UP
                         {
 //                                .Location.X = Warp(.Warp).Exit.X + Warp(.Warp).Exit.Width / 2 - .Location.Width / 2
-                            p.Location.X = Warp[p.Warp].Exit.X + (Warp[p.Warp].Exit.Width / 2) - (p.Location.Width / 2);
+                            p.Location.X = warp.Exit.X + (warp.Exit.Width / 2) - (p.Location.Width / 2);
 //                                .Location.Y = Warp(.Warp).Exit.Y + Warp(.Warp).Exit.Height + 8
-                            p.Location.Y = Warp[p.Warp].Exit.Y + Warp[p.Warp].Exit.Height + 8;
+                            p.Location.Y = warp.Exit.Y + warp.Exit.Height + 8;
                         }
 //                            ElseIf Warp(.Warp).Direction2 = 2 Then
-                        if(Warp[p.Warp].Direction2 == 2) // RIGHT
+                        if(warp.Direction2 == 2) // RIGHT
                         {
 //                                If .Mount = 3 Then .Duck = True
                             if(p.Mount == 3) p.Duck = true;
 //                                .Location.X = Warp(.Warp).Exit.X - .Location.Width - 8
-                            p.Location.X = Warp[p.Warp].Exit.X - p.Location.Width - 8;
+                            p.Location.X = warp.Exit.X - p.Location.Width - 8;
 //                                .Location.Y = Warp(.Warp).Exit.Y + Warp(.Warp).Exit.Height - .Location.Height - 2
-                            p.Location.Y = Warp[p.Warp].Exit.Y + Warp[p.Warp].Exit.Height - p.Location.Height - 2;
+                            p.Location.Y = warp.Exit.Y + warp.Exit.Height - p.Location.Height - 2;
                         }
 //                            ElseIf Warp(.Warp).Direction2 = 4 Then
-                        if(Warp[p.Warp].Direction2 == 4) // LEFT
+                        if(warp.Direction2 == 4) // LEFT
                         {
 //                                If .Mount = 3 Then .Duck = True
                             if(p.Mount == 3) p.Duck = true;
 //                                .Location.X = Warp(.Warp).Exit.X + Warp(.Warp).Exit.Width + 8
-                            p.Location.X = Warp[p.Warp].Exit.X + Warp[p.Warp].Exit.Width + 8;
+                            p.Location.X = warp.Exit.X + warp.Exit.Width + 8;
 //                                .Location.Y = Warp(.Warp).Exit.Y + Warp(.Warp).Exit.Height - .Location.Height - 2
-                            p.Location.Y = Warp[p.Warp].Exit.Y + Warp[p.Warp].Exit.Height - p.Location.Height - 2;
+                            p.Location.Y = warp.Exit.Y + warp.Exit.Height - p.Location.Height - 2;
 //                            End If
                         }
 
@@ -654,16 +738,23 @@ int GameMain(const CmdLineSetup_t &setup)
                         p.Effect = 8;
                         p.Effect2 = 950;
                     }
-                    else if(Warp[p.Warp].Effect == 2)
+                    else if(warp.Effect == 2)
                     {
 //                            .Location.X = Warp(.Warp).Exit.X + Warp(.Warp).Exit.Width / 2 - .Location.Width / 2
-                        p.Location.X = Warp[p.Warp].Exit.X + Warp[p.Warp].Exit.Width / 2 - p.Location.Width / 2;
+                        p.Location.X = warp.Exit.X + warp.Exit.Width / 2 - p.Location.Width / 2;
 //                            .Location.Y = Warp(.Warp).Exit.Y + Warp(.Warp).Exit.Height - .Location.Height
-                        p.Location.Y = Warp[p.Warp].Exit.Y + Warp[p.Warp].Exit.Height - p.Location.Height;
+                        p.Location.Y = warp.Exit.Y + warp.Exit.Height - p.Location.Height;
 
                         CheckSection(A);
                         p.Effect = 8;
                         p.Effect2 = 2000;
+                    }
+                    else if(warp.Effect == 3) // Portal warp
+                    {
+                        p.Location.X = warp.Exit.X + warp.Exit.Width / 2 - p.Location.Width / 2;
+                        p.Location.Y = warp.Exit.Y + warp.Exit.Height - p.Location.Height;
+                        CheckSection(A);
+                        p.WarpCD = 50;
                     }
                 }
 
@@ -695,6 +786,8 @@ int GameMain(const CmdLineSetup_t &setup)
             UpdateGraphics(true);
             resetFrameTimer();
 
+            speedRun_triggerEnter();
+
             // MAIN GAME LOOP
             runFrameLoop(nullptr, &GameLoop,
             []()->bool{return !LevelSelect && !GameMenu;},
@@ -707,6 +800,9 @@ int GameMain(const CmdLineSetup_t &setup)
                 }
                 return false;
             });
+
+            record_finish();
+
             if(!GameIsActive)
             {
                 speedRun_saveStats();
@@ -719,46 +815,34 @@ int GameMain(const CmdLineSetup_t &setup)
 //            If TestLevel = True Then
             if(TestLevel)
             {
-//                TestLevel = False
-//                TestLevel = false;
-//                LevelEditor = True
-//                LevelEditor = true;
-//                LevelEditor = true; //FIXME: Restart level testing or quit a game instead of THIS
-
-                if(LevelBeatCode != 0)
-                    GameIsActive = false;
-                else
+                if(LevelBeatCode == 0)
                 {
+                    // restart level if lost
                     GameThing();
                     PGE_Delay(500);
                     zTestLevel(setup.testMagicHand, setup.interprocess); // Restart level
                 }
+                // if called from the new editor, return to editor
+                else if(!Backup_FullFileName.empty())
+                {
+                    TestLevel = false;
+                    LevelEditor = true;
+
+                    OpenLevel(FullFileName);
+                    if (!Backup_FullFileName.empty())
+                    {
+                        Files::deleteFile(FullFileName);
+                        FullFileName = Backup_FullFileName;
+                        Backup_FullFileName = "";
+                    }
+                }
+                // if from command line
+                else if(setup.testLevelMode && !setup.interprocess)
+                {
+                    GameIsActive = false;
+                }
 
                 LevelBeatCode = 0;
-
-//                If nPlay.Online = False Then
-//                    OpenLevel FullFileName
-//                OpenLevel(FullFileName);
-//                Else
-//                    If nPlay.Mode = 1 Then
-//                        Netplay.sendData "H0" & LB
-//                        If Len(FullFileName) > 4 Then
-//                            If LCase(Right(FullFileName, 4)) = ".lvl" Then
-//                                OpenLevel FullFileName
-//                            Else
-//                                For A = 1 To 15
-//                                    If nPlay.ClientCon(A) = True Then Netplay.InitSync A
-//                                Next A
-//                            End If
-//                        Else
-//                            For A = 1 To 15
-//                                If nPlay.ClientCon(A) = True Then Netplay.InitSync A
-//                            Next A
-//                        End If
-//                    End If
-//                End If
-
-//                LevelSelect = False
                 LevelSelect = false;
             }
 //            Else
@@ -782,7 +866,27 @@ int GameMain(const CmdLineSetup_t &setup)
 
 void EditorLoop()
 {
-    // DUMMY
+    UpdateEditorControls();
+    UpdateEditor();
+    UpdateBlocks();
+    UpdateEffects();
+    if (WorldEditor == true)
+        UpdateGraphics2(true);
+    else
+        UpdateGraphics(true);
+    frmMain.setTargetTexture();
+#if defined(__3DS__)
+    editorScreen.UpdateSelectorBar(true);
+    editorScreen.UpdateEditorScreen();
+#else
+    if(editorScreen.active)
+        editorScreen.UpdateEditorScreen();
+    else
+        editorScreen.UpdateSelectorBar(true);
+#endif
+    frmMain.setTargetScreen();
+    frmMain.repaint();
+    UpdateSound();
 }
 
 void KillIt()
@@ -805,8 +909,10 @@ void KillIt()
 void NextLevel()
 {
     int A = 0;
+
     for(A = 1; A <= numPlayers; A++)
         Player[A].HoldingNPC = 0;
+
     LevelMacro = LEVELMACRO_OFF;
     LevelMacroCounter = 0;
     StopMusic();
@@ -815,13 +921,15 @@ void NextLevel()
     frmMain.clearBuffer();
     frmMain.repaint();
     DoEvents();
+
     if(!TestLevel && GoToLevel.empty() && !NoMap)
         PGE_Delay(500);
+
     if(BattleMode && !LevelEditor && !TestLevel)
     {
         EndLevel = false;
         GameMenu = true;
-        MenuMode = 4;
+        MenuMode = MENU_BATTLE_MODE;
         MenuCursor = selWorld - 1;
         PlayerCharacter = Player[1].Character;
         PlayerCharacter2 = Player[2].Character;
@@ -843,6 +951,17 @@ void UpdateMacro()
 {
     int A = 0;
     bool OnScreen = false;
+
+#ifndef NO_INTPROC
+    if(LevelMacro != LEVELMACRO_OFF && LevelMacroCounter == 0 && IntProc::isEnabled())
+    {
+        for(int i = 0; i < numPlayers; ++i)
+        {
+            auto &p = Player[i + 1];
+            IntProc::sendPlayerSettings(i, p.Character, p.State, p.Mount, p.MountType);
+        }
+    }
+#endif
 
     if(LevelMacro == LEVELMACRO_CARD_ROULETTE_EXIT) // SMB3 Exit
     {
@@ -885,7 +1004,7 @@ void UpdateMacro()
 
         if(!OnScreen)
         {
-            LevelMacroCounter = LevelMacroCounter + 1;
+            LevelMacroCounter += 1;
             if(LevelMacroCounter >= 100)
             {
                 LevelBeatCode = 1;
@@ -910,7 +1029,8 @@ void UpdateMacro()
             Player[A].Controls.AltJump = false;
             Player[A].Controls.AltRun = false;
         }
-        LevelMacroCounter = LevelMacroCounter + 1;
+
+        LevelMacroCounter += 1;
         if(LevelMacroCounter >= 460)
         {
             LevelBeatCode = 2;
@@ -993,7 +1113,8 @@ void UpdateMacro()
             Player[A].Controls.AltJump = false;
             Player[A].Controls.AltRun = false;
         }
-        LevelMacroCounter = LevelMacroCounter + 1;
+
+        LevelMacroCounter += 1;
         if(LevelMacroCounter >= 300)
         {
             LevelBeatCode = 5;
@@ -1019,9 +1140,10 @@ void UpdateMacro()
             Player[A].Controls.AltJump = false;
             Player[A].Controls.AltRun = false;
         }
-        LevelMacroCounter = LevelMacroCounter + 1;
+
+        LevelMacroCounter += 1;
         if(LevelMacroCounter == 250)
-            PlaySound(45);
+            PlaySound(SFX_GameBeat);
         if(LevelMacroCounter >= 800)
         {
             EndLevel = true;
@@ -1032,7 +1154,7 @@ void UpdateMacro()
                 BeatTheGame = true;
                 SaveGame();
                 GameOutro = true;
-                MenuMode = 0;
+                MenuMode = MENU_INTRO;
                 MenuCursor = 0;
             }
             frmMain.clearBuffer();
@@ -1053,7 +1175,8 @@ void UpdateMacro()
             Player[A].Controls.AltJump = false;
             Player[A].Controls.AltRun = false;
         }
-        LevelMacroCounter = LevelMacroCounter + 1;
+
+        LevelMacroCounter += 1;
         if(LevelMacroCounter >= 300)
         {
             LevelBeatCode = 7;
@@ -1094,7 +1217,8 @@ void UpdateMacro()
                 Player[A].Controls.AltRun = false;
             }
         }
-        LevelMacroCounter = LevelMacroCounter + 1;
+
+        LevelMacroCounter += 1;
         if(LevelMacroCounter >= 630)
         {
             LevelBeatCode = 8;
@@ -1155,6 +1279,9 @@ void InitControls()
         joyFillDefaults(conKeyboard[A]);
         joyFillDefaults(conJoystick[A]);
     }
+
+    editorJoyFillDefaults(editorConKeyboard);
+    editorJoyFillDefaults(editorConJoystick);
 
     OpenConfig();
 
@@ -1329,7 +1456,7 @@ void MoreScore(int addScore, Location_t Loc, int &Multiplier)
     if(Points[A] <= 5)
     {
         Lives += Points[A];
-        PlaySound(15, Points[A] - 1);
+        PlaySound(SFX_1up, Points[A] - 1);
     }
     else
         Score += Points[A];
@@ -1434,7 +1561,7 @@ void StartBattleMode()
     else
     {
         if(selWorld == 1)
-            selWorld = (iRand() % (NumSelectWorld - 1)) + 2;
+            selWorld = (iRand(NumSelectWorld - 1)) + 2;
     }
 
     std::string levelPath = SelectWorld[selWorld].WorldPath + SelectWorld[selWorld].WorldFile;
@@ -1449,4 +1576,73 @@ void StartBattleMode()
     BattleIntro = 150;
     BattleWinner = 0;
     BattleOutro = 0;
+}
+
+void DeleteSave(int world, int save)
+{
+    auto &w = SelectWorld[world];
+    std::string savePath = makeGameSavePath(w.WorldPath,
+                                            w.WorldFile,
+                                            fmt::format_ne("save{0}.savx", save));
+    std::string savePathOld = w.WorldPath + fmt::format_ne("save{0}.savx", save);
+    std::string savePathAncient = w.WorldPath + fmt::format_ne("save{0}.sav", save);
+
+    if(Files::fileExists(savePath))
+        Files::deleteFile(savePath);
+    if(Files::fileExists(savePathOld))
+        Files::deleteFile(savePathOld);
+    if(Files::fileExists(savePathAncient))
+        Files::deleteFile(savePathAncient);
+
+    std::string timersPath = makeGameSavePath(w.WorldPath,
+                                              w.WorldFile,
+                                              fmt::format_ne("timers{0}.ini", save));
+    if(Files::fileExists(timersPath))
+        Files::deleteFile(timersPath);
+
+#ifdef __EMSCRIPTEN__
+    AppPathManager::syncFs();
+#endif
+}
+
+void CopySave(int world, int src, int dst)
+{
+    auto &w = SelectWorld[world];
+    std::string savePathOld = SelectWorld[world].WorldPath + fmt::format_ne("save{0}.savx", src);
+    std::string savePathAncient = SelectWorld[world].WorldPath + fmt::format_ne("save{0}.sav", src);
+
+    std::string savePathSrc = makeGameSavePath(w.WorldPath,
+                                               w.WorldFile,
+                                               fmt::format_ne("save{0}.savx", src));
+    std::string savePathDst = makeGameSavePath(w.WorldPath,
+                                               w.WorldFile,
+                                               fmt::format_ne("save{0}.savx", dst));
+
+    if(!Files::fileExists(savePathSrc)) // Attempt to convert an old game-save from the episode directory
+    {
+        GamesaveData sav;
+        bool succ = false;
+
+        if(Files::fileExists(savePathOld))
+            succ = FileFormats::ReadExtendedSaveFileF(savePathOld, sav);
+        else if(Files::fileExists(savePathAncient))
+            succ = FileFormats::ReadSMBX64SavFileF(savePathAncient, sav);
+
+        if(succ)
+            FileFormats::WriteExtendedSaveFileF(savePathSrc, sav);
+    }
+
+    Files::copyFile(savePathDst, savePathSrc, true);
+
+    std::string timersPathSrc = makeGameSavePath(w.WorldPath,
+                                                 w.WorldFile,
+                                                 fmt::format_ne("timers{0}.ini", src));
+    std::string timersPathDst = makeGameSavePath(w.WorldPath,
+                                                 w.WorldFile,
+                                                 fmt::format_ne("timers{0}.ini", dst));
+    Files::copyFile(timersPathDst, timersPathSrc, true);
+
+#ifdef __EMSCRIPTEN__
+    AppPathManager::syncFs();
+#endif
 }

@@ -18,9 +18,13 @@
  */
 
 
+#ifndef __3DS__
 #include <SDL2/SDL_stdinc.h>
 #include <SDL2/SDL_rwops.h>
 #include <SDL2/SDL_filesystem.h>
+#else
+#include <3ds.h>
+#endif
 
 #include <DirManager/dirman.h>
 #include <Utils/files.h>
@@ -78,7 +82,7 @@ static void loadCustomState()
         // run the 'test' function
         FS.syncfs(true, function (err) {
             assert(!err);
-            ccall('unlockLoadingCustomState', 'v');
+            ccall('unlockLoadingCustomState', 'v', null, null, {async: true});
         });
     );
 
@@ -108,10 +112,16 @@ std::string  ApplicationPathSTD;
 
 std::string AppPathManager::m_settingsPath;
 std::string AppPathManager::m_userPath;
+#ifdef __3DS__
+std::vector<std::string> AppPathManager::m_worldRootDirs;
+#endif
 std::string AppPathManager::m_customAssetsRoot;
 
 #if defined(__ANDROID__)
+//! Default path to the internal sotrage directory
 static std::string m_androidSdCardPath = "/storage/emulated/0";
+//! Customized absolute path to the game assets directory
+static std::string m_androidGameAssetsPath;
 
 JNIEXPORT void JNICALL
 Java_ru_wohlsoft_thextech_thextechActivity_setSdCardPath(
@@ -122,9 +132,23 @@ Java_ru_wohlsoft_thextech_thextechActivity_setSdCardPath(
 {
     const char *sdcardPath;
     (void)type;
-    sdcardPath = env->GetStringUTFChars(sdcardPath_j, NULL);
+    sdcardPath = env->GetStringUTFChars(sdcardPath_j, nullptr);
     m_androidSdCardPath = sdcardPath;
     env->ReleaseStringUTFChars(sdcardPath_j, sdcardPath);
+}
+
+JNIEXPORT void JNICALL
+Java_ru_wohlsoft_thextech_thextechActivity_setGameAssetsPath(
+    JNIEnv *env,
+    jclass type,
+    jstring gameAssetsPath_j
+)
+{
+    const char *gameAssetsPath;
+    (void)type;
+    gameAssetsPath = env->GetStringUTFChars(gameAssetsPath_j, nullptr);
+    m_androidGameAssetsPath = gameAssetsPath;
+    env->ReleaseStringUTFChars(gameAssetsPath_j, gameAssetsPath);
 }
 #endif
 
@@ -140,6 +164,9 @@ bool AppPathManager::m_isPortable = false;
 
 #if defined(USER_DIR_NAME)
 #define UserDirName "/" USER_DIR_NAME
+#elif defined(__3DS__)
+#define UserDirName "/3ds/thextech"
+#define FIXED_ASSETS_PATH "romfs:/"
 #elif defined(__ANDROID__) || defined(__APPLE__) || defined(__HAIKU__)
 #define UserDirName "/PGE Project"
 #else
@@ -153,8 +180,9 @@ bool AppPathManager::m_isPortable = false;
 static std::string getPgeUserDirectory()
 {
     std::string path;
-
-#if defined(__APPLE__)
+#if defined(__3DS__)
+    return UserDirName;
+#elif defined(__APPLE__)
     {
         char *base_path = getAppSupportDir();
         if(base_path)
@@ -178,6 +206,9 @@ static std::string getPgeUserDirectory()
     }
 
 #elif defined(__ANDROID__)
+    if(!m_androidGameAssetsPath.empty())
+        return m_androidGameAssetsPath; // Don't search the path, simply re-use the defined path
+
     path = m_androidSdCardPath;
 
     DirMan homeDir(path);
@@ -203,7 +234,7 @@ static std::string getPgeUserDirectory()
 
 void AppPathManager::initAppPath()
 {
-#ifdef __APPLE__
+#if defined(__APPLE__)
     {
         CFURLRef appUrlRef;
         appUrlRef = CFBundleCopyBundleURL(CFBundleGetMainBundle());
@@ -223,7 +254,9 @@ void AppPathManager::initAppPath()
         }
         CFRelease(appUrlRef);
     }
-#else //__APPLE__
+#elif defined(__3DS__)
+    ApplicationPathSTD = "romfs:/";
+#else
     char *path = SDL_GetBasePath();
     if(!path)
     {
@@ -272,11 +305,23 @@ void AppPathManager::initAppPath()
 #endif
         m_userPath = appDir.absolutePath();
 #if !defined(__EMSCRIPTEN__) && !defined(USER_DIR_NAME)
+#   if defined(__ANDROID__)
+        if(m_androidGameAssetsPath.empty())
+            m_userPath.append("/thextech/");
+        else
+            m_userPath.append("/");
+#   elif !defined(__3DS__)
         m_userPath.append("/thextech/");
+#else
+        m_userPath.append("/");
+#   endif
 #else
         m_userPath.append("/");
 #endif
         initSettingsPath();
+#ifdef __3DS__
+        findUserWorlds(appDir);
+#endif
     }
     else
     {
@@ -293,6 +338,56 @@ defaultSettingsPath:
     fflush(stdout);
 #endif
 }
+
+#ifdef __3DS__
+// find additional user worlds packaged in .romfs files
+void AppPathManager::findUserWorlds(DirMan userDir)
+{
+    m_worldRootDirs.push_back(UserDirName "/worlds/");
+    m_worldRootDirs.push_back(assetsRoot() + "worlds/");
+    std::vector<std::string> romfsFiles;
+    static const std::vector<std::string> romfsExt = {".romfs"};
+    userDir.getListOfFiles(romfsFiles, romfsExt);
+    // for some reason dirent returns a very strange format that appears to be
+    // utf-8 expressed as utf-16 and then converted back to utf-8.
+    uint16_t utf16_buf[4096+1];
+    uint8_t utf8_buf[4096+1];
+    std::string fullPath;
+    char mount_label[9] = "romfsA:/";
+    for (std::string& s : romfsFiles)
+    {
+        fullPath = userDir.absolutePath() + "/" + s;
+        ssize_t units = utf8_to_utf16(utf16_buf, (const uint8_t*)fullPath.c_str(), 4096);
+        if (units < 0 || units > 4096) continue;
+        utf16_buf[units] = 0;
+        for (int i = 0; i < units; i++)
+        {
+            utf8_buf[i] = (uint8_t) (0xff & utf16_buf[i]);
+        }
+        utf8_buf[units] = 0;
+
+        Handle fd = 0;
+        FS_Path archPath = { PATH_EMPTY, 1, "" };
+        FS_Path filePath = { PATH_ASCII, units+1, utf8_buf };
+        Result rc = FSUSER_OpenFileDirectly(&fd, ARCHIVE_SDMC, archPath, filePath, FS_OPEN_READ, 0);
+        if (R_FAILED(rc))
+            continue;
+        mount_label[6] = '\0';
+        rc = romfsMountFromFile(fd, 0, mount_label);
+        if (R_FAILED(rc))
+            continue;
+        mount_label[6] = ':';
+        m_worldRootDirs.push_back(std::string(mount_label));
+        mount_label[5] ++;
+        // from Z to a.
+        if (mount_label[5] == 91)
+            mount_label[5] = 97;
+        // max of 52 mounts.
+        if (mount_label[5] == 123)
+            break;
+    }
+}
+#endif
 
 std::string AppPathManager::settingsFileSTD()
 {
@@ -345,6 +440,11 @@ void AppPathManager::setAssetsRoot(const std::string &root)
     m_customAssetsRoot = root;
     if(!m_customAssetsRoot.empty() && m_customAssetsRoot.back() != '/')
         m_customAssetsRoot.push_back('/');
+}
+
+std::string AppPathManager::logsDir()
+{
+    return m_userPath + "logs";
 }
 
 std::string AppPathManager::languagesDir()
@@ -404,6 +504,11 @@ std::string AppPathManager::gameSaveRootDir()
     return m_settingsPath + "gamesaves";
 }
 
+std::string AppPathManager::gameplayRecordsRootDir()
+{
+    return m_userPath + "gameplay-records";
+}
+
 std::string AppPathManager::userWorldsRootDir()
 {
 #ifdef __APPLE__
@@ -412,6 +517,13 @@ std::string AppPathManager::userWorldsRootDir()
     return m_userPath + "worlds";
 #endif
 }
+
+#ifdef __3DS__
+const std::vector<std::string>& AppPathManager::worldRootDirs()
+{
+    return m_worldRootDirs;
+}
+#endif
 
 std::string AppPathManager::userBattleRootDir()
 {
@@ -441,6 +553,9 @@ bool AppPathManager::isPortable()
 
 bool AppPathManager::checkPortable()
 {
+#ifdef __3DS__
+    return false;
+#endif
     if(m_settingsPath.empty())
         m_settingsPath = ApplicationPathSTD;
 

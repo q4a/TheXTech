@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "globals.h"
@@ -124,49 +119,49 @@ bool NPCStartCollision(const Location_t &Loc1, const Location_t &Loc2)
 }
 
 // Warp point collisions
-bool WarpCollision(const Location_t &Loc1, int A)
+bool WarpCollision(const Location_t &Loc1, const Location_t &entrance, int direction)
 {
-    bool tempWarpCollision = false;
+    bool hasCollision = false;
+
     float X2 = 0;
     float Y2 = 0;
 
-    auto &tempVar = Warp[A];
-    if(tempVar.Direction == 3)
+    if(direction == 3)
     {
         X2 = 0;
         Y2 = 32;
     }
-    else if(tempVar.Direction == 1)
+    else if(direction == 1)
     {
         X2 = 0;
         Y2 = -30;
     }
-    else if(tempVar.Direction == 2)
+    else if(direction == 2)
     {
         X2 = -31;
         Y2 = 32;
     }
-    else if(tempVar.Direction == 4)
+    else if(direction == 4)
     {
         X2 = 31;
         Y2 = 32;
     }
 
-    if(float(Loc1.X) <= float(tempVar.Entrance.X) + float(tempVar.Entrance.Width) + X2)
+    if(float(Loc1.X) <= float(entrance.X) + float(entrance.Width) + X2)
     {
-        if(float(Loc1.X) + float(Loc1.Width) >= float(tempVar.Entrance.X) + X2)
+        if(float(Loc1.X) + float(Loc1.Width) >= float(entrance.X) + X2)
         {
-            if(float(Loc1.Y) <= float(tempVar.Entrance.Y) + float(tempVar.Entrance.Height) + Y2)
+            if(float(Loc1.Y) <= float(entrance.Y) + float(entrance.Height) + Y2)
             {
-                if(float(Loc1.Y) + float(Loc1.Height) >= float(tempVar.Entrance.Y) + Y2)
+                if(float(Loc1.Y) + float(Loc1.Height) >= float(entrance.Y) + Y2)
                 {
-                    tempWarpCollision = true;
+                    hasCollision = true;
                 }
             }
         }
     }
 
-    return tempWarpCollision;
+    return hasCollision;
 }
 
 // Whats side the collision happened
@@ -448,6 +443,69 @@ bool vScreenCollision(int A, const Location_t &Loc2)
         }
     }
 
+    return tempvScreenCollision;
+
+}
+
+// vScreen collisions assuming the game is 800 x H
+bool vScreenCollisionCanonicalX(int A, int left, int top, const Location_t &Loc2)
+{
+    (void)top;
+    bool tempvScreenCollision = false;
+    if(-left <= Loc2.X + Loc2.Width)
+    {
+        if(-left + 800 >= Loc2.X)
+        {
+            if(-vScreenY[A] <= Loc2.Y + Loc2.Height)
+            {
+                if(-vScreenY[A] + vScreen[A].Height >= Loc2.Y)
+                {
+                    tempvScreenCollision = true;
+                }
+            }
+        }
+    }
+    return tempvScreenCollision;
+}
+
+// vScreen collisions assuming the game is W x 600
+bool vScreenCollisionCanonicalY(int A, int left, int top, const Location_t &Loc2)
+{
+    (void)left;
+    bool tempvScreenCollision = false;
+    if(-vScreenX[A] <= Loc2.X + Loc2.Width)
+    {
+        if(-vScreenX[A] + vScreen[A].Width >= Loc2.X)
+        {
+            if(-top <= Loc2.Y + Loc2.Height)
+            {
+                if(-top + 600 >= Loc2.Y)
+                {
+                    tempvScreenCollision = true;
+                }
+            }
+        }
+    }
+    return tempvScreenCollision;
+}
+
+// vScreen collisions assuming the game is 800 x 600
+bool vScreenCollisionCanonical(int left, int top, const Location_t &Loc2)
+{
+    bool tempvScreenCollision = false;
+    if(-left <= Loc2.X + Loc2.Width)
+    {
+        if(-left + 800 >= Loc2.X)
+        {
+            if(-top <= Loc2.Y + Loc2.Height)
+            {
+                if(-top + 600 >= Loc2.Y)
+                {
+                    tempvScreenCollision = true;
+                }
+            }
+        }
+    }
     return tempvScreenCollision;
 
 }

@@ -4,26 +4,25 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef NO_SDL
 #include <SDL2/SDL_timer.h>
+#else
+#include "SDL_supplement.h"
+#endif
 
 #include <fmt_format_ne.h>
 #include <Logger/logger.h>
@@ -101,6 +100,12 @@ void PerformanceStats_t::print()
 //                                   (physScannedBlocks + physScannedBGOs + physScannedNPCs)),
 //                   3, 45, 44);
     }
+
+    if(GameMenu)
+    {
+        SuperPrint(fmt::sprintf_ne("MENU-MODE: %d", MenuMode),
+                   3, 45, 70, 0.5f, 1.f, 1.f);
+    }
 }
 
 //#if !defined(__EMSCRIPTEN__)
@@ -123,10 +128,17 @@ void PerformanceStats_t::print()
 
 typedef int64_t nanotime_t;
 
+#ifndef NO_SDL
 static SDL_INLINE nanotime_t getNanoTime()
 {
     return static_cast<nanotime_t>(SDL_GetTicks()) * 1000000;
 }
+#else
+static SDL_INLINE nanotime_t getNanoTime()
+{
+    return static_cast<nanotime_t>(SDL_GetMicroTicks()) * 1000;
+}
+#endif
 
 static SDL_INLINE nanotime_t getElapsedTime(nanotime_t oldTime)
 {
@@ -138,13 +150,21 @@ static SDL_INLINE nanotime_t getSleepTime(nanotime_t oldTime, nanotime_t target)
     return target - getElapsedTime(oldTime);
 }
 
+#ifdef __3DS__
+static SDL_INLINE void xtech_nanosleep(nanotime_t sleepTime)
+{
+    if(sleepTime <= 0)
+        return;
+    PGE_Nano_Delay(sleepTime);
+}
+#else
 static SDL_INLINE void xtech_nanosleep(nanotime_t sleepTime)
 {
     if(sleepTime <= 0)
         return;
     PGE_Delay((Uint32)SDL_ceil(sleepTime / 1000000.0));
 }
-
+#endif
 
 struct TimeStore
 {

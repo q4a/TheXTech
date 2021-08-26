@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef SORTING_H
@@ -37,13 +32,13 @@ void qSortBlocksX(int min, int max);
 void qSortBackgrounds(int min, int max);
 // Public Sub FindBlocks() 'create a table of contents for blocks for an optimization
 // create a table of contents for blocks for an optimization
-void FindBlocks();
+// void FindBlocks();
 // Public Sub BlockSort() 'sizable block sorting
 // sizable block sorting
-void BlockSort();
+// void BlockSort();
 // Public Sub BlockSort2() 'Super Block sorting / slow and only used when saving
 // Super Block sorting / slow and only used when saving
-void BlockSort2();
+// void BlockSort2();
 // Public Sub BackgroundSort()
 void BackgroundSort();
 // Public Function BackGroundPri(A As Integer) As Double 'finds where the backgrounds should be put to set drawing priority
@@ -52,7 +47,7 @@ double BackGroundPri(int A);
 // Public Sub NPCSort()
 void NPCSort();
 // Public Sub FindSBlocks() 'sorts sizable blocks
-// sorts sizable blocks
+// sorts sizable blocks -- DOES NOT modify Block array
 void FindSBlocks();
 // Public Sub qSortSBlocks(min As Integer, max As Integer)
 void qSortSBlocks(int min, int max);
@@ -61,7 +56,7 @@ void qSortNPCsY(int min, int max);
 // Public Sub UpdateBackgrounds()
 void UpdateBackgrounds();
 // Public Sub qSortTempBlocksX(min As Integer, max As Integer)
-void qSortTempBlocksX(int min, int max);
+// void qSortTempBlocksX(int min, int max);
 
 
 #endif // SORTING_H

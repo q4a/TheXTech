@@ -2,12 +2,11 @@ package ru.wohlsoft.thextech;
 
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
-import android.graphics.Point;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.DisplayMetrics;
-import android.view.WindowManager;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -100,6 +99,19 @@ public class thextechActivity extends SDLActivity
         setTouchScreenShowOnStart(setup.getBoolean("touchscreen_gamepad_showalways", false));
         setTouchPadStyle(Integer.parseInt(setup.getString("setup_touchscreen_style", "0")));
 
+        setVibrationEnabled(setup.getBoolean("touchscreen_feedback_enabled", false));
+        setVibrationStrength(Float.parseFloat(setup.getString("touchscreen_vibration_strength", "1.0")));
+        setVibrationLength(Integer.parseInt(setup.getString("touchscreen_vibration_length", "12")));
+
+        String gameAssetsPath = setup.getString("setup_assets_path", "");
+        if(!gameAssetsPath.isEmpty())
+        {
+            File f = new File(gameAssetsPath);
+            if (f.exists() && f.isDirectory()) {
+                setGameAssetsPath(gameAssetsPath);
+            }
+        }
+
         String[] argsOut = new String[args.size()];
         args.toArray(argsOut);
 
@@ -127,11 +139,11 @@ public class thextechActivity extends SDLActivity
     {
         super.onCreate(savedInstanceState);
         this.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        this.setSdCardPath(Environment.getExternalStorageDirectory().getAbsolutePath());
+        setSdCardPath(Environment.getExternalStorageDirectory().getAbsolutePath());
 
         DisplayMetrics displayMetrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-        this.setScreenSize(SDLActivity.getDiagonal(), displayMetrics.widthPixels, displayMetrics.heightPixels);
+        setScreenSize(SDLActivity.getDiagonal(), displayMetrics.widthPixels, displayMetrics.heightPixels);
     }
 
     @Override
@@ -148,4 +160,9 @@ public class thextechActivity extends SDLActivity
     public static native void setScreenSize(double screenSize, double width, double height);
     public static native void setTouchPadStyle(int style);
     public static native void setSdCardPath(String path);
+    public static native void setGameAssetsPath(String path);
+    // Touch-screen controller feeback
+    public static native void setVibrationEnabled(boolean enabled);
+    public static native void setVibrationStrength(float strength);
+    public static native void setVibrationLength(int length);
 }

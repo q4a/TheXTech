@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "../globals.h"
@@ -31,10 +26,15 @@
 #include "../graphics.h"
 #include "../player.h"
 #include "../game_main.h"
+#include "../layers.h"
+#include "../npc_id.h"
 
 #include <Utils/maths.h>
 #include <Logger/logger.h>
 
+#ifndef NO_INTPROC
+#include <InterProcess/intproc.h>
+#endif
 
 void DropBonus(int A)
 {
@@ -50,7 +50,7 @@ void DropBonus(int A)
         }
         if(Player[A].HeldBonus > 0)
         {
-            PlaySound(11);
+            PlaySound(SFX_DropItem);
             numNPCs++;
             NPC[numNPCs] = NPC_t();
             NPC[numNPCs].Type = Player[A].HeldBonus;
@@ -63,8 +63,13 @@ void DropBonus(int A)
                 if(A == 2)
                     B = 40;
                 GetvScreenAverage();
+
+                double ScreenTop = -vScreenY[1];
+                if (vScreen[1].Height > 600)
+                    ScreenTop += vScreen[1].Height / 2 - 300;
+
                 NPC[numNPCs].Location.X = -vScreenX[1] + vScreen[1].Width / 2.0 - NPC[numNPCs].Location.Width / 2.0 + B;
-                NPC[numNPCs].Location.Y = -vScreenY[1] + 16 + 12;
+                NPC[numNPCs].Location.Y = ScreenTop + 16 + 12;
             }
                 //            else if(nPlay.Online == true)
                 //            {
@@ -75,8 +80,13 @@ void DropBonus(int A)
             else
             {
                 GetvScreen(A);
+
+                double ScreenTop = -vScreenY[1];
+                if (vScreen[1].Height > 600)
+                    ScreenTop += vScreen[1].Height / 2 - 300;
+
                 NPC[numNPCs].Location.X = -vScreenX[A] + vScreen[A].Width / 2.0 - NPC[numNPCs].Location.Width / 2.0;
-                NPC[numNPCs].Location.Y = -vScreenY[A] + 16 + 12;
+                NPC[numNPCs].Location.Y = ScreenTop + 16 + 12;
             }
             NPC[numNPCs].Location.SpeedX = 0;
             NPC[numNPCs].Location.SpeedY = 0;
@@ -84,6 +94,7 @@ void DropBonus(int A)
             NPC[numNPCs].Effect2 = 1;
             NPC[numNPCs].Active = true;
             NPC[numNPCs].TimeLeft = 200;
+            syncLayers_NPC(numNPCs);
             CheckSectionNPC(numNPCs);
             Player[A].HeldBonus = 0;
             //            if(nPlay.Online == true)
@@ -94,10 +105,32 @@ void DropBonus(int A)
         Player[A].HeldBonus = 0;
 }
 
+void CheckAfterStarTake(bool many)
+{
+    int allBGOs = numBackground + numLocked;
+    for(int c = 1; c <= numWarps; c++)
+    {
+        auto &w = Warp[c];
+        if((!many && (w.Stars == numStars)) || (many && (w.Stars <= numStars)))
+        {
+            for(int d = numBackground + 1; d <= allBGOs; d++)
+            {
+                auto &b = Background[d];
+                if(b.Type == 160 && CheckCollision(w.Entrance, b.Location))
+                {
+                    b.Layer.clear();
+                    b.Hidden = true;
+                    syncLayers_BGO(d);
+                }
+            }
+        }
+    }
+}
+
 void TouchBonus(int A, int B)
 {
     int C = 0;
-    int D = 0;
+    // int D = 0;
     int toadBool = 0;
     bool tempBool = false;
     Location_t tempLocation;
@@ -144,7 +177,7 @@ void TouchBonus(int A, int B)
                 if(Player[2].Immune < 10)
                     Player[2].Immune = 10;
                 NPC[B].Killed = 9;
-                PlaySound(20);
+                PlaySound(SFX_BossBeat);
                 return;
             }
         }
@@ -164,7 +197,7 @@ void TouchBonus(int A, int B)
                     SizeCheck(A);
                     NewEffect(63, Player[A].Location);
                 }
-                PlaySound(87);
+                PlaySound(SFX_ZeldaFairy);
                 Player[A].FairyTime = -1;
                 NPC[B].Killed = 9;
             }
@@ -179,7 +212,7 @@ void TouchBonus(int A, int B)
         {
             Player[A].HeldBonus = 248;
             NPC[B].Killed = 9;
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             return;
         }
         if(NPC[B].Type == 240 || NPC[B].Type == 248) // player touched the clock
@@ -198,7 +231,7 @@ void TouchBonus(int A, int B)
                 Player[A].Hearts = 2;
             SizeCheck(A);
             NPC[B].Killed = 9;
-            PlaySound(58);
+            PlaySound(SFX_Checkpoint);
             Checkpoint = FullFileName;
             Checkpoint_t cp;
             cp.id = Maths::iRound(NPC[B].Special);
@@ -245,14 +278,14 @@ void TouchBonus(int A, int B)
                 Player[A].Effect = 1;
                 if(Player[A].Mount > 0)
                     UnDuck(A);
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             else if(NPC[B].Type == 250)
-                PlaySound(79);
+                PlaySound(SFX_ZeldaHeart);
             else
-                PlaySound(12);
+                PlaySound(SFX_GotItem);
             if(NPC[B].Effect != 2)
-                MoreScore(6, NPC[B].Location);
+                MoreScore(NPCScore[NPC[B].Type], NPC[B].Location);
         }
         else if(NPC[B].Type == 14 || NPC[B].Type == 182 || NPC[B].Type == 183) // Bonus is a fire flower
         {
@@ -271,19 +304,19 @@ void TouchBonus(int A, int B)
                 if(Player[A].Mount > 0)
                     UnDuck(A);
                 if(Player[A].Character == 5)
-                    PlaySound(83);
+                    PlaySound(SFX_ZeldaItem);
                 else
-                    PlaySound(6);
+                    PlaySound(SFX_PlayerGrow);
             }
             else
             {
                 if(Player[A].Character == 5)
-                    PlaySound(79);
+                    PlaySound(SFX_ZeldaHeart);
                 else
-                    PlaySound(12);
+                    PlaySound(SFX_GotItem);
             }
             if(NPC[B].Effect != 2)
-                MoreScore(6, NPC[B].Location);
+                MoreScore(NPCScore[NPC[B].Type], NPC[B].Location);
         }
         else if(NPC[B].Type == 264 || NPC[B].Type == 277) // Bonus is an ice flower
         {
@@ -303,19 +336,19 @@ void TouchBonus(int A, int B)
                 if(Player[A].Mount > 0)
                     UnDuck(A);
                 if(Player[A].Character == 5)
-                    PlaySound(83);
+                    PlaySound(SFX_ZeldaItem);
                 else
-                    PlaySound(6);
+                    PlaySound(SFX_PlayerGrow);
             }
             else
             {
                 if(Player[A].Character == 5)
-                    PlaySound(79);
+                    PlaySound(SFX_ZeldaHeart);
                 else
-                    PlaySound(12);
+                    PlaySound(SFX_GotItem);
             }
             if(NPC[B].Effect != 2)
-                MoreScore(6, NPC[B].Location);
+                MoreScore(NPCScore[NPC[B].Type], NPC[B].Location);
         }
         else if(NPC[B].Type == 34) // Bonus is a leaf
         {
@@ -329,19 +362,19 @@ void TouchBonus(int A, int B)
                 if(Player[A].Mount > 0)
                     UnDuck(A);
                 if(Player[A].Character == 5)
-                    PlaySound(83);
+                    PlaySound(SFX_ZeldaItem);
                 else
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
             }
             else
             {
                 if(Player[A].Character == 5)
-                    PlaySound(79);
+                    PlaySound(SFX_ZeldaHeart);
                 else
-                    PlaySound(12);
+                    PlaySound(SFX_GotItem);
             }
             if(NPC[B].Effect != 2)
-                MoreScore(6, NPC[B].Location);
+                MoreScore(NPCScore[NPC[B].Type], NPC[B].Location);
         }
         else if(NPC[B].Type == 169) // Bonus is a Tanooki Suit
         {
@@ -355,19 +388,19 @@ void TouchBonus(int A, int B)
                 if(Player[A].Mount > 0)
                     UnDuck(A);
                 if(Player[A].Character == 5)
-                    PlaySound(83);
+                    PlaySound(SFX_ZeldaItem);
                 else
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
             }
             else
             {
                 if(Player[A].Character == 5)
-                    PlaySound(79);
+                    PlaySound(SFX_ZeldaHeart);
                 else
-                    PlaySound(12);
+                    PlaySound(SFX_GotItem);
             }
             if(NPC[B].Effect != 2)
-                MoreScore(6, NPC[B].Location);
+                MoreScore(NPCScore[NPC[B].Type], NPC[B].Location);
         }
         else if(NPC[B].Type == 170) // Bonus is a Hammer Suit
         {
@@ -381,28 +414,28 @@ void TouchBonus(int A, int B)
                 if(Player[A].Mount > 0)
                     UnDuck(A);
                 if(Player[A].Character == 5)
-                    PlaySound(83);
+                    PlaySound(SFX_ZeldaItem);
                 else
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
             }
             else
             {
                 if(Player[A].Character == 5)
-                    PlaySound(79);
+                    PlaySound(SFX_ZeldaHeart);
                 else
-                    PlaySound(12);
+                    PlaySound(SFX_GotItem);
             }
             if(NPC[B].Effect != 2)
-                MoreScore(6, NPC[B].Location);
+                MoreScore(NPCScore[NPC[B].Type], NPC[B].Location);
         }
         else if(NPCIsACoin[NPC[B].Type]) // Bonus is a coin
         {
             if(NPC[B].Type == 152)
-                PlaySound(56);
+                PlaySound(SFX_SonicRing);
             else if(NPC[B].Type == 251 || NPC[B].Type == 252 || NPC[B].Type == 253)
-                PlaySound(81);
+                PlaySound(SFX_ZeldaRupee);
             else if(NPC[B].Type != 274)
-                PlaySound(14);
+                PlaySound(SFX_Coin);
             if(NPC[B].Type == 252 || NPC[B].Type == 258)
                 Coins = Coins + 5;
             else if(NPC[B].Type == 253)
@@ -414,7 +447,7 @@ void TouchBonus(int A, int B)
                 if(Lives < 99)
                 {
                     Lives = Lives + 1;
-                    PlaySound(15);
+                    PlaySound(SFX_1up);
                     Coins = Coins - 100;
                 }
                 else
@@ -422,11 +455,11 @@ void TouchBonus(int A, int B)
             }
             if(NPC[B].Type == 274)
             {
-                PlaySound(59);
+                PlaySound(SFX_DraginCoin);
                 MoreScore(NPCScore[NPC[B].Type], NPC[B].Location);
-                NPCScore[274] = NPCScore[274] + 1;
-                if(NPCScore[274] > 14)
-                    NPCScore[274] = 14;
+                NPCScore[NPCID_DRAGONCOIN] = NPCScore[NPCID_DRAGONCOIN] + 1;
+                if(NPCScore[NPCID_DRAGONCOIN] > 14)
+                    NPCScore[NPCID_DRAGONCOIN] = 14;
             }
             else
                 MoreScore(1, NPC[B].Location);
@@ -465,7 +498,7 @@ void TouchBonus(int A, int B)
                 }
                 StopMusic();
                 DoEvents();
-                PlaySound(19);
+                PlaySound(SFX_CardRouletteClear);
             }
             else if(NPC[B].Type == 16)
             {
@@ -484,7 +517,7 @@ void TouchBonus(int A, int B)
                     }
                 }
                 StopMusic();
-                PlaySound(21);
+                PlaySound(SFX_DungeonClear);
             }
             else if(NPC[B].Type == 41)
             {
@@ -503,7 +536,7 @@ void TouchBonus(int A, int B)
                     }
                 }
                 StopMusic();
-                PlaySound(40);
+                PlaySound(SFX_CrystalBallExit);
             }
             else if(NPC[B].Type == 97 || NPC[B].Type == 196)
             {
@@ -515,27 +548,13 @@ void TouchBonus(int A, int B)
 
                 if(!tempBool)
                 {
-                    numStars = numStars + 1;
+                    numStars += 1;
                     Star[numStars].level = FileNameFull;
                     Star[numStars].Section = NPC[B].Section;
-                    for(C = 1; C <= numWarps; C++)
-                    {
-                        if(Warp[C].Stars == numStars)
-                        {
-                            int allBGOs = numBackground + numLocked;
-                            for(D = numBackground; D <= allBGOs; D++)
-                            {
-                                if(Background[D].Type == 160)
-                                {
-                                    if(CheckCollision(Warp[C].Entrance, Background[D].Location))
-                                    {
-                                        Background[D].Layer.clear();
-                                        Background[D].Hidden = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
+#ifndef NO_INTPROC
+                    IntProc::sendStarsNumber(numStars);
+#endif
+                    CheckAfterStarTake(false);
                 }
 
                 if(NPC[B].Type == 97)
@@ -555,10 +574,10 @@ void TouchBonus(int A, int B)
                         }
                     }
                     StopMusic();
-                    PlaySound(52);
+                    PlaySound(SFX_GotStar);
                 }
                 else
-                    PlaySound(59);
+                    PlaySound(SFX_DraginCoin);
             }
         }
         if(toadBool > 0)

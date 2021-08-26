@@ -4,24 +4,23 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#ifdef NO_SDL
+#error "Primary `main/cheat_code.cpp` only for SDL targets. Build target-specific `cheat_code.cpp` instead."
+#endif
 
 #include <SDL2/SDL_stdinc.h>
 #include <SDL2/SDL_messagebox.h>
@@ -67,7 +66,7 @@ void CheatCode(char NewKey)
     if(SDL_strstr(CheatString.c_str(), "redigitiscool"))
     {
         pLogCritical("redigitiscool code was been used, player got a punish!");
-        PlaySound(70);
+        PlaySound(SFX_SMExplosion);
         Score = 0; // Being very evil here, mu-ha-ha-ha-ha! >:D
         Lives = 0;
         Coins = 0;
@@ -129,7 +128,7 @@ void CheatCode(char NewKey)
     if(SDL_strstr(CheatString.c_str(), "redigitiscool") || SDL_strstr(CheatString.c_str(), "\x77\x6f\x68\x6c\x73\x74\x61\x6e\x64\x69\x73\x74\x73\x65\x68\x72\x67\x75\x74"))
 #endif
     {
-        PlaySound(69);
+        PlaySound(SFX_SMCry);
         Cheater = false;
         CheatString.clear();
         return;
@@ -156,7 +155,7 @@ void CheatCode(char NewKey)
             }
             for(B = 1; B <= numWorldLevels; B++)
                 WorldLevel[B].Active = true;
-            PlaySound(27);
+            PlaySound(SFX_NewPath);
             CheatString.clear();
             cheated = true;
         }
@@ -165,12 +164,12 @@ void CheatCode(char NewKey)
             if(WalkAnywhere == true)
             {
                 WalkAnywhere = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
                 WalkAnywhere = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -180,7 +179,7 @@ void CheatCode(char NewKey)
     {
         if(SDL_strstr(CheatString.c_str(), "needashell"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 113;
             CheatString.clear();
@@ -192,7 +191,7 @@ void CheatCode(char NewKey)
             {
                 for(B = 1; B <= numPlayers; B++)
                 {
-                    PlaySound(87);
+                    PlaySound(SFX_ZeldaFairy);
                     Player[B].Immune = 10;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -206,7 +205,7 @@ void CheatCode(char NewKey)
             {
                 for(B = 1; B <= numPlayers; B++)
                 {
-                    PlaySound(87);
+                    PlaySound(SFX_ZeldaFairy);
                     Player[B].Immune = 10;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -232,14 +231,14 @@ void CheatCode(char NewKey)
                     }
                 }
             }
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             CheatString.clear();
             cheated = true;
         }
         else if(SDL_strstr(CheatString.c_str(), "istillplaywithlegos") || SDL_strstr(CheatString.c_str(), "istillplazwithlegos"))
         {
             ShowLayer("Destroyed Blocks");
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             CheatString.clear();
             cheated = true;
         }
@@ -262,7 +261,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].Section = Player[C].Section;
                 }
             }
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             CheatString.clear();
             cheated = true;
         }
@@ -285,7 +284,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].Section = Player[C].Section;
                 }
             }
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             CheatString.clear();
             cheated = true;
         }
@@ -359,7 +358,7 @@ void CheatCode(char NewKey)
                         bgMusic[B] = bgMusicREAL[B];
                 }
             }
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             for(B = 1; B <= numPlayers; B++)
             {
                 if(Player[B].Dead == false && Player[B].TimeToLive == 0)
@@ -378,7 +377,7 @@ void CheatCode(char NewKey)
 
         else if(SDL_strstr(CheatString.c_str(), "needaredshell"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 114;
             CheatString.clear();
@@ -386,7 +385,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needablueshell"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 115;
             CheatString.clear();
@@ -394,7 +393,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needayellowshell") || SDL_strstr(CheatString.c_str(), "needazellowshell"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 116;
             CheatString.clear();
@@ -402,7 +401,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needaturnip"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 92;
             CheatString.clear();
@@ -410,7 +409,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needa1up"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 90;
             CheatString.clear();
@@ -418,13 +417,13 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needatanookisuit"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].HeldBonus = 169;
                 if(Player[B].Character >= 3 && Player[B].State != 5)
                 {
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
                     Player[B].Immune = 30;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -440,15 +439,15 @@ void CheatCode(char NewKey)
             CheatString.clear();
             cheated = true;
         }
-        else if(SDL_strstr(CheatString.c_str(), "needahammersuit"))
+        else if(SDL_strstr(CheatString.c_str(), "needahammersuit") || SDL_strstr(CheatString.c_str(), "hammertime"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].HeldBonus = 170;
                 if(Player[B].Character >= 3 && Player[B].State != 6)
                 {
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
                     Player[B].Immune = 30;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -467,13 +466,13 @@ void CheatCode(char NewKey)
 
         else if(SDL_strstr(CheatString.c_str(), "needamushroom"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].HeldBonus = 9;
                 if(Player[B].Character >= 3 && Player[B].State == 1)
                 {
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
                     Player[B].Immune = 30;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -491,13 +490,13 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needaflower"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].HeldBonus = 14;
                 if(Player[B].Character >= 3 && Player[B].State != 3)
                 {
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
                     Player[B].Immune = 30;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -515,13 +514,13 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "niceflower"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].HeldBonus = 264;
                 if(Player[B].Character >= 3 && Player[B].State != 7)
                 {
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
                     Player[B].Immune = 30;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -539,13 +538,13 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needaleaf"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].HeldBonus = 34;
                 if(Player[B].Character >= 3 && Player[B].State != 4)
                 {
-                    PlaySound(34);
+                    PlaySound(SFX_Raccoon);
                     Player[B].Immune = 30;
                     Player[B].Effect = 8;
                     Player[B].Effect2 = 4;
@@ -563,7 +562,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needanegg"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 96;
             CheatString.clear();
@@ -571,7 +570,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needaplant"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 49;
             CheatString.clear();
@@ -579,7 +578,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needagun"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 22;
             CheatString.clear();
@@ -587,7 +586,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needaswitch"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 32;
             CheatString.clear();
@@ -595,7 +594,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needaclock"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 248;
             CheatString.clear();
@@ -603,7 +602,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needabomb"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 135;
             CheatString.clear();
@@ -611,7 +610,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "needashoe"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 35;
             CheatString.clear();
@@ -619,7 +618,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "redshoe"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 191;
             CheatString.clear();
@@ -627,7 +626,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "blueshoe"))
         {
-            PlaySound(12);
+            PlaySound(SFX_GotItem);
             for(B = 1; B <= numPlayers; B++)
                 Player[B].HeldBonus = 193;
             CheatString.clear();
@@ -637,7 +636,7 @@ void CheatCode(char NewKey)
 
         else if(SDL_strstr(CheatString.c_str(), "shadowstar"))
         {
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].Immune = 50;
@@ -655,7 +654,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "ibakedacakeforyou") || SDL_strstr(CheatString.c_str(), "ibakedacakeforzou") || SDL_strstr(CheatString.c_str(), "itsamepeach"))
         {
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].Character = 3;
@@ -679,7 +678,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "anothercastle") || SDL_strstr(CheatString.c_str(), "itsametoad"))
         {
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].Character = 4;
@@ -703,7 +702,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "iamerror") || SDL_strstr(CheatString.c_str(), "itsamelink"))
         {
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].Character = 5;
@@ -728,7 +727,7 @@ void CheatCode(char NewKey)
 
         else if(SDL_strstr(CheatString.c_str(), "itsamemario") || SDL_strstr(CheatString.c_str(), "plumberboy") || SDL_strstr(CheatString.c_str(), "plumberboz") || SDL_strstr(CheatString.c_str(), "moustacheman"))
         {
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].Character = 1;
@@ -752,7 +751,7 @@ void CheatCode(char NewKey)
         }
         else if(SDL_strstr(CheatString.c_str(), "itsameluigi") || SDL_strstr(CheatString.c_str(), "greenmario"))
         {
-            PlaySound(34);
+            PlaySound(SFX_Raccoon);
             for(B = 1; B <= numPlayers; B++)
             {
                 Player[B].Character = 2;
@@ -793,7 +792,7 @@ void CheatCode(char NewKey)
                         Player[C].Location.SpeedY = dRand() * 24 - 12;
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
@@ -817,7 +816,7 @@ void CheatCode(char NewKey)
                         Player[C].Location.SpeedY = dRand() * 24 - 12;
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
@@ -841,7 +840,7 @@ void CheatCode(char NewKey)
                         Player[C].Location.SpeedY = dRand() * 24 - 12;
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
@@ -865,7 +864,7 @@ void CheatCode(char NewKey)
                         Player[C].Location.SpeedY = dRand() * 24 - 12;
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
@@ -889,7 +888,7 @@ void CheatCode(char NewKey)
                         Player[C].Location.SpeedY = dRand() * 24 - 12;
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
@@ -913,7 +912,7 @@ void CheatCode(char NewKey)
                         Player[C].Location.SpeedY = dRand() * 24 - 12;
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
@@ -964,12 +963,12 @@ void CheatCode(char NewKey)
                         }
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
         }
-        else if(SDL_strstr(CheatString.c_str(), "1player"))
+        else if(SDL_strstr(CheatString.c_str(), "1player") || SDL_strstr(CheatString.c_str(), "1plazer"))
         {
             B = CheckLiving();
             if(B > 0)
@@ -980,7 +979,7 @@ void CheatCode(char NewKey)
                 {
                     if(C != B)
                     {
-                        Bomb(Player[C].Location, (iRand() % 2) + 2);
+                        Bomb(Player[C].Location, iRand(2) + 2);
                     }
                 }
                 numPlayers = 1;
@@ -1008,7 +1007,7 @@ void CheatCode(char NewKey)
             cheated = true;
         }
 
-        else if(SDL_strstr(CheatString.c_str(), "2player"))
+        else if(SDL_strstr(CheatString.c_str(), "2player") || SDL_strstr(CheatString.c_str(), "2plazer"))
         {
             B = CheckLiving();
             if(B > 0)
@@ -1054,7 +1053,7 @@ void CheatCode(char NewKey)
                         }
                     }
                 }
-                Bomb(Player[B].Location, (iRand() % 2) + 2);
+                Bomb(Player[B].Location, iRand(2) + 2);
             }
             CheatString.clear();
             cheated = true;
@@ -1074,7 +1073,7 @@ void CheatCode(char NewKey)
                         NPC[B].Inert == false
                     )
                     {
-                        PlaySound(34);
+                        PlaySound(SFX_Raccoon);
                         NPC[B].Location.Y = NPC[B].Location.Y + NPC[B].Location.Height / 2.0;
                         NPC[B].Location.X = NPC[B].Location.X + NPC[B].Location.Width / 2.0;
                         tempLocation = NPC[B].Location;
@@ -1113,7 +1112,7 @@ void CheatCode(char NewKey)
                     CheckSectionNPC(numNPCs);
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1138,7 +1137,7 @@ void CheatCode(char NewKey)
                     CheckSectionNPC(numNPCs);
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1165,7 +1164,7 @@ void CheatCode(char NewKey)
                     CheckSectionNPC(numNPCs);
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1190,7 +1189,7 @@ void CheatCode(char NewKey)
                     CheckSectionNPC(numNPCs);
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1217,7 +1216,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].Section = Player[B].Section;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1244,7 +1243,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].Section = Player[B].Section;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1271,7 +1270,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].Section = Player[B].Section;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1298,7 +1297,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].Section = Player[B].Section;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1323,7 +1322,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1351,7 +1350,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1378,7 +1377,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1405,7 +1404,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1433,7 +1432,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1460,7 +1459,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1487,7 +1486,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1515,7 +1514,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1542,7 +1541,7 @@ void CheatCode(char NewKey)
                     NPC[numNPCs].HoldingPlayer = B;
                     Player[B].HoldingNPC = numNPCs;
                     Player[B].ForceHold = 60;
-                    PlaySound(23);
+                    PlaySound(SFX_Grab);
                 }
             }
             CheatString.clear();
@@ -1568,14 +1567,14 @@ void CheatCode(char NewKey)
 //                if(TestLevel == true)
 //                    frmTestSettings::chkGrabAll.Value = 0;
                 GrabAll = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
 //                if(TestLevel == true)
 //                    frmTestSettings::chkGrabAll.Value = 1;
                 GrabAll = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             for(B = 1; B <= 128; B++)
             {
@@ -1592,12 +1591,12 @@ void CheatCode(char NewKey)
             if(CaptainN == true)
             {
                 CaptainN = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
                 CaptainN = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -1607,12 +1606,12 @@ void CheatCode(char NewKey)
             if(FlameThrower == true)
             {
                 FlameThrower = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
                 FlameThrower = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -1622,12 +1621,12 @@ void CheatCode(char NewKey)
             if(CoinMode == true)
             {
                 CoinMode = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
                 CoinMode = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -1639,14 +1638,14 @@ void CheatCode(char NewKey)
 //                if(TestLevel == true)
 //                    frmTestSettings::chkGodMode.Value = 0;
                 GodMode = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
 //                if(TestLevel == true)
 //                    frmTestSettings::chkGodMode.Value = 1;
                 GodMode = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -1656,12 +1655,12 @@ void CheatCode(char NewKey)
             if(FlyForever == true)
             {
                 FlyForever = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
                 FlyForever = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -1671,12 +1670,12 @@ void CheatCode(char NewKey)
             if(SuperSpeed == true)
             {
                 SuperSpeed = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
                 SuperSpeed = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -1686,12 +1685,12 @@ void CheatCode(char NewKey)
             if(MultiHop == true)
             {
                 MultiHop = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
                 MultiHop = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;
@@ -1703,7 +1702,7 @@ void CheatCode(char NewKey)
 //                if(TestLevel == true)
 //                    frmTestSettings::chkShowFPS.Value = 0;
                 ShowFPS = false;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
                 PrintFPS = 0;
             }
             else
@@ -1711,7 +1710,7 @@ void CheatCode(char NewKey)
 //                if(TestLevel == true)
 //                    frmTestSettings::chkShowFPS.Value = 1;
                 ShowFPS = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             return;
@@ -1723,14 +1722,14 @@ void CheatCode(char NewKey)
                 MaxFPS = false;
 //                if(TestLevel == true)
 //                    frmTestSettings::chkMaxFPS.Value = 0;
-                PlaySound(5);
+                PlaySound(SFX_PlayerShrink);
             }
             else
             {
 //                if(TestLevel == true)
 //                    frmTestSettings::chkMaxFPS.Value = 1;
                 MaxFPS = true;
-                PlaySound(6);
+                PlaySound(SFX_PlayerGrow);
             }
             CheatString.clear();
             cheated = true;

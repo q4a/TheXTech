@@ -4,24 +4,23 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+#ifdef NO_SDL
+#error "Primary `frm_main.cpp` only for SDL clients. Build target-specific `frm_main.cpp` instead."
+#endif
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_thread.h>
@@ -36,7 +35,7 @@
 #include "graphics.h"
 #include "control/joystick.h"
 #include "sound.h"
-#include "editor.h"
+#include "editor/editor.h"
 
 #include <AppPath/app_path.h>
 #include <Logger/logger.h>
@@ -54,8 +53,11 @@
 
 #include "../version.h"
 
+#include "video.h"
 #include "frm_main.h"
 #include "main/game_info.h"
+
+#include "config.h"
 
 
 static SDL_bool IsFullScreen(SDL_Window *win)
@@ -85,6 +87,8 @@ Uint8 FrmMain::getKeyState(SDL_Scancode key)
 bool FrmMain::initSDL(const CmdLineSetup_t &setup)
 {
     bool res = false;
+    if(setup.noVideo)
+        m_headless = true;
 
     m_windowTitle = g_gameInfo.titleWindow;
 
@@ -92,11 +96,16 @@ bool FrmMain::initSDL(const CmdLineSetup_t &setup)
     //Write into log the application start event
     pLogDebug("<Application started>");
 
+#ifndef NO_SCREENSHOT
     m_screenshotPath = AppPathManager::screenshotsDir();
     m_gifRecordPath = AppPathManager::gifRecordsDir();
+#endif
 
     //Initialize FreeImage
     GraphicsHelps::initFreeImage();
+
+    if(setup.allowBgInput)
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
 #if defined(__ANDROID__) || (defined(__APPLE__) && (defined(TARGET_IPHONE_SIMULATOR) || defined(TARGET_OS_IPHONE)))
     // Restrict the landscape orientation only
@@ -135,13 +144,18 @@ bool FrmMain::initSDL(const CmdLineSetup_t &setup)
 
     SDL_GL_ResetAttributes();
 
+    if(g_config.InternalW != 0 && g_config.InternalH != 0)
+    {
+        ScaleWidth = g_config.InternalW;
+        ScaleHeight = g_config.InternalH;
+    }
+
     m_window = SDL_CreateWindow(m_windowTitle.c_str(),
                               SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,
                               ScaleWidth, ScaleHeight,
                               SDL_WINDOW_RESIZABLE |
-                              SDL_WINDOW_HIDDEN |
-                              SDL_WINDOW_ALLOW_HIGHDPI);
+                              SDL_WINDOW_HIDDEN);
 
     if(m_window == nullptr)
     {
@@ -162,10 +176,13 @@ bool FrmMain::initSDL(const CmdLineSetup_t &setup)
 #elif defined(__ANDROID__) // Set as small as possible
     SDL_SetWindowMinimumSize(m_window, 200, 150);
 #else
-    SDL_SetWindowMinimumSize(m_window, ScaleWidth, ScaleHeight);
+    SDL_SetWindowMinimumSize(m_window, 480, 320);
 #endif //__EMSCRIPTEN__
 
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+    if(g_videoSettings.scaleMode == SCALE_DYNAMIC_LINEAR)
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+    else
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
 
 #if defined(__ANDROID__) // Use a full-screen on Android mode by default
     setFullScreen(true);
@@ -219,37 +236,40 @@ bool FrmMain::initSDL(const CmdLineSetup_t &setup)
     pLogDebug("Init renderer settings...");
 
     Uint32 renderFlags = 0;
-    if(setup.renderType == CmdLineSetup_t::RENDER_SW)
+    if(g_videoSettings.renderMode == RENDER_SOFTWARE)
     {
         renderFlags = SDL_RENDERER_SOFTWARE;
+        g_videoSettings.renderModeObtained = RENDER_SOFTWARE;
         pLogDebug("Using software rendering");
     }
-    else if(setup.renderType == CmdLineSetup_t::RENDER_HW)
+    else if(g_videoSettings.renderMode == RENDER_ACCELERATED)
     {
         renderFlags = SDL_RENDERER_ACCELERATED;
+        g_videoSettings.renderModeObtained = RENDER_ACCELERATED;
         pLogDebug("Using accelerated rendering");
     }
-    else if(setup.renderType == CmdLineSetup_t::RENDER_VSYNC)
+    else if(g_videoSettings.renderMode == RENDER_ACCELERATED_VSYNC)
     {
         renderFlags = SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC;
-        MaxFPS = true;
+        g_videoSettings.renderModeObtained = RENDER_ACCELERATED_VSYNC;
         pLogDebug("Using accelerated rendering with a vertical synchronization");
     }
 
     m_gRenderer = SDL_CreateRenderer(m_window, -1, renderFlags | SDL_RENDERER_TARGETTEXTURE); // Try to make renderer
 
-    if(!m_gRenderer && setup.renderType == CmdLineSetup_t::RENDER_VSYNC) // If was a V-Sync renderer, use non-V-Synced
+    if(!m_gRenderer && g_videoSettings.renderModeObtained == RENDER_ACCELERATED_VSYNC) // If was a V-Sync renderer, use non-V-Synced
     {
         pLogWarning("Failed to initialize V-Synced renderer, trying to create accelerated renderer...");
         renderFlags = SDL_RENDERER_ACCELERATED;
-        MaxFPS = false;
+        g_videoSettings.renderModeObtained = RENDER_ACCELERATED;
         m_gRenderer = SDL_CreateRenderer(m_window, -1, renderFlags | SDL_RENDERER_TARGETTEXTURE);
     }
 
-    if(!m_gRenderer && setup.renderType != CmdLineSetup_t::RENDER_SW) // Fall back to software
+    if(!m_gRenderer && g_videoSettings.renderModeObtained == RENDER_ACCELERATED) // Fall back to software
     {
         pLogWarning("Failed to initialize accelerated renderer, trying to create a software renderer...");
         renderFlags = SDL_RENDERER_SOFTWARE;
+        g_videoSettings.renderModeObtained = RENDER_SOFTWARE;
         m_gRenderer = SDL_CreateRenderer(m_window, -1, renderFlags | SDL_RENDERER_TARGETTEXTURE);
     }
 
@@ -426,9 +446,35 @@ bool FrmMain::hasWindowMouseFocus()
     return (flags & SDL_WINDOW_MOUSE_FOCUS) != 0;
 }
 
+void SizeWindow(SDL_Window* window)
+{
+#if defined(FIXED_RES)
+    if(g_videoSettings.scaleMode == SCALE_FIXED_1X)
+    {
+        SDL_SetWindowSize(window, ScreenW, ScreenH);
+    }
+    else if(g_videoSettings.scaleMode == SCALE_FIXED_2X)
+    {
+        SDL_SetWindowSize(window, 2*ScreenW, 2*ScreenH);
+    }
+#else
+    if(g_config.InternalW != 0 && g_config.InternalH != 0)
+    {
+        if(g_videoSettings.scaleMode == SCALE_FIXED_1X)
+        {
+            SDL_SetWindowSize(window, g_config.InternalW, g_config.InternalH);
+        }
+        else if(g_videoSettings.scaleMode == SCALE_FIXED_2X)
+        {
+            SDL_SetWindowSize(window, 2*g_config.InternalW, 2*g_config.InternalH);
+        }
+    }
+#endif
+}
+
 void FrmMain::eventDoubleClick()
 {
-    if(MagicHand)
+    if(MagicHand || LevelEditor || WorldEditor)
         return; // Don't toggle fullscreen/window when magic hand is active
 #if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
     if(resChanged)
@@ -436,8 +482,8 @@ void FrmMain::eventDoubleClick()
         frmMain.setFullScreen(false);
         resChanged = false;
         SDL_RestoreWindow(m_window);
-        SDL_SetWindowSize(m_window, ScreenW, ScreenH);
-        if(!GameMenu && !MagicHand)
+        SizeWindow(m_window);
+        if(!GameMenu && !MagicHand && !LevelEditor && !WorldEditor)
             showCursor(1);
     }
     else
@@ -528,14 +574,14 @@ void FrmMain::eventMouseDown(SDL_MouseButtonEvent &event)
         MenuMouseDown = true;
         MenuMouseMove = true;
         if(LevelEditor || MagicHand || TestLevel)
-            EditorControls.Mouse1 = true;
+            EditorControls.MouseClick = true;
     }
     else if(event.button == SDL_BUTTON_RIGHT)
     {
         MenuMouseBack = true;
         if(LevelEditor || MagicHand || TestLevel)
         {
-            optCursor.current = 13;
+            optCursor.current = OptCursor_t::LVL_SELECT;
             MouseMove(float(MenuMouseX), float(MenuMouseY));
             SetCursor();
         }
@@ -544,7 +590,7 @@ void FrmMain::eventMouseDown(SDL_MouseButtonEvent &event)
     {
         if(LevelEditor || MagicHand || TestLevel)
         {
-            optCursor.current = 6;
+            optCursor.current = OptCursor_t::LVL_ERASER;
             MouseMove(float(MenuMouseX), float(MenuMouseY));
             SetCursor();
         }
@@ -559,8 +605,8 @@ void FrmMain::eventMouseMove(SDL_MouseMotionEvent &event)
     MenuMouseMove = true;
     if(LevelEditor || MagicHand || TestLevel)
     {
-        EditorCursor.X = CursorPos.X;
-        EditorCursor.Y = CursorPos.Y;
+        EditorCursor.X = p.x;
+        EditorCursor.Y = p.y;
         MouseMove(EditorCursor.X, EditorCursor.Y, true);
         MouseRelease = true;
     }
@@ -572,7 +618,7 @@ void FrmMain::eventMouseUp(SDL_MouseButtonEvent &event)
     MenuMouseDown = false;
     MenuMouseRelease = true;
     if(LevelEditor || MagicHand || TestLevel)
-        EditorControls.Mouse1 = false;
+        EditorControls.MouseClick = false;
 
     if(event.button == SDL_BUTTON_LEFT)
     {
@@ -642,13 +688,14 @@ bool FrmMain::isSdlError()
 
 void FrmMain::repaint()
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     if(m_blockRender)
         return;
 #endif
 
     int w, h, off_x, off_y, wDst, hDst;
-    float scale_x, scale_y;
 
     setTargetScreen();
 
@@ -660,23 +707,9 @@ void FrmMain::repaint()
     SDL_GetRendererOutputSize(m_gRenderer, &w, &h);
 
     // Calculate the size difference factor
-    scale_x = float(w) / ScaleWidth;
-    scale_y = float(h) / ScaleHeight;
 
-    wDst = w;
-    hDst = h;
-
-    // Keep aspect ratio
-    if(scale_x > scale_y) // Width more than height
-    {
-        wDst = int(scale_y * ScaleWidth);
-        hDst = int(scale_y * ScaleHeight);
-    }
-    else if(scale_x < scale_y) // Height more than width
-    {
-        hDst = int(scale_x * ScaleHeight);
-        wDst = int(scale_x * ScaleWidth);
-    }
+    wDst = int(scale * ScaleWidth);
+    hDst = int(scale * ScaleHeight);
 
     // Align the rendering scene to the center of screen
     off_x = (w - wDst) / 2;
@@ -701,10 +734,16 @@ void FrmMain::repaint()
 
 void FrmMain::updateViewport()
 {
+#ifndef NO_SCREENSHOT
+    // invalidates GIF recorder handle
+    if(m_gif.enabled)
+        toggleGifRecorder();
+#endif
+
     float w, w1, h, h1;
     int   wi, hi;
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(FIXED_RES)
     SDL_GetWindowSize(m_window, &wi, &hi);
 #else
     if(IsFullScreen(m_window))
@@ -718,29 +757,86 @@ void FrmMain::updateViewport()
     }
 #endif
 
+    if(g_videoSettings.scaleMode == SCALE_DYNAMIC_LINEAR)
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+    else
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+
+#ifndef FIXED_RES
+    if(g_config.InternalW == 0 || g_config.InternalH == 0)
+    {
+        ScaleWidth = wi;
+        ScaleHeight = hi;
+        if(g_videoSettings.scaleMode == SCALE_FIXED_2X)
+        {
+            ScaleWidth /= 2;
+            ScaleHeight /= 2;
+        }
+        if(g_videoSettings.scaleMode == SCALE_DYNAMIC_INTEGER)
+        {
+            int i = 1;
+            while(ScaleWidth/(i+1) > 800 && ScaleHeight/(i+1) > 600)
+                i++;
+            ScaleWidth /= i;
+            ScaleHeight /= i;
+        }
+        if(ScaleWidth < 480) ScaleWidth = 480;
+        if(ScaleHeight < 320) ScaleHeight = 320;
+        if(ScaleHeight > 720)
+        {
+            if((g_videoSettings.scaleMode == SCALE_DYNAMIC_NEAREST
+                || g_videoSettings.scaleMode == SCALE_DYNAMIC_LINEAR)
+                && ScaleWidth * 720 / ScaleHeight > 800)
+            {
+                ScaleWidth = ScaleWidth * 720 / ScaleHeight;
+            }
+            if(g_videoSettings.scaleMode == SCALE_DYNAMIC_INTEGER
+                && ScaleWidth / std::floor(ScaleHeight / 720) > 800)
+            {
+                ScaleWidth = ScaleWidth / std::floor(ScaleHeight / 720);
+            }
+            ScaleHeight = 720;
+        }
+        // maximum 2.4 (cinematic) aspect ratio
+        if(ScaleWidth > 1728)
+            ScaleWidth = 1728;
+    }
+    else
+    {
+        ScaleWidth = g_config.InternalW;
+        ScaleHeight = g_config.InternalH;   
+    }
+    Set_Resolution(ScaleWidth, ScaleHeight);
+    SDL_DestroyTexture(m_tBuffer);
+    m_tBuffer = SDL_CreateTexture(m_gRenderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, ScreenW, ScreenH);
+    SDL_SetRenderTarget(m_gRenderer, m_tBuffer);
+#endif
+
     w = wi;
     h = hi;
     w1 = w;
     h1 = h;
 
-    scale_x = w / ScaleWidth;
-    scale_y = h / ScaleHeight;
-    viewport_scale_x = scale_x;
-    viewport_scale_y = scale_y;
+    scale = w / ScaleWidth;
+
+    if(scale > h / ScaleHeight)
+        scale = h / ScaleHeight;
+
+    if(g_videoSettings.scaleMode == SCALE_DYNAMIC_INTEGER && scale > 1.f)
+        scale = std::floor(scale);
+    if(g_videoSettings.scaleMode == SCALE_FIXED_1X && scale > 1.f)
+        scale = 1.f;
+    if(g_videoSettings.scaleMode == SCALE_FIXED_2X && scale > 2.f)
+        scale = 2.f;
+
+    w1 = scale * ScaleWidth;
+    h1 = scale * ScaleHeight;
+
+    viewport_scale_x = scale;
+    viewport_scale_y = scale;
 
     viewport_offset_x = 0;
     viewport_offset_y = 0;
-
-    if(scale_x > scale_y)
-    {
-        w1 = scale_y * ScaleWidth;
-        viewport_scale_x = w1 / ScaleWidth;
-    }
-    else if(scale_x < scale_y)
-    {
-        h1 = scale_x * ScaleHeight;
-        viewport_scale_y = h1 / ScaleHeight;
-    }
 
     offset_x = (w - w1) / 2;
     offset_y = (h - h1) / 2;
@@ -749,11 +845,19 @@ void FrmMain::updateViewport()
     viewport_y = 0;
     viewport_w = static_cast<int>(w1);
     viewport_h = static_cast<int>(h1);
+
+    if(GameMenu)
+    {
+        SetupScreens();
+        CenterScreens();
+        GameMenu = false;
+        GetvScreenAverage();
+        GameMenu = true;
+    }
 }
 
 void FrmMain::resetViewport()
 {
-    updateViewport();
     SDL_RenderSetViewport(m_gRenderer, nullptr);
 }
 
@@ -1034,7 +1138,6 @@ void FrmMain::loadTexture(StdPicture &target, uint32_t width, uint32_t height, u
     target.inited = true;
 }
 
-
 void FrmMain::lazyLoad(StdPicture &target)
 {
     if(!target.inited || !target.lazyLoaded || target.texture)
@@ -1055,7 +1158,7 @@ void FrmMain::lazyLoad(StdPicture &target)
 
     if((w == 0) || (h == 0))
     {
-        FreeImage_Unload(sourceImage);
+        GraphicsHelps::closeImage(sourceImage);
         pLogWarning("Error lazy-decompressing of image file:\n"
                     "Reason: %s."
                     "Zero image size!");
@@ -1085,13 +1188,27 @@ void FrmMain::lazyLoad(StdPicture &target)
     target.frame_w = static_cast<int>(w);
     target.frame_h = static_cast<int>(h);
 
-    bool wLimitExcited = m_ri.max_texture_width > 0 && w > Uint32(m_ri.max_texture_width);
-    bool hLimitExcited = m_ri.max_texture_height > 0 && h > Uint32(m_ri.max_texture_height);
+    bool shrink2x = false;
 
-    if(wLimitExcited || hLimitExcited)
+    if(g_videoSettings.scaleDownAllTextures || GraphicsHelps::validateFor2xScaleDown(sourceImage, StdPictureGetOrigPath(target)))
     {
         target.w_orig = int(w);
         target.h_orig = int(h);
+        w /= 2;
+        h /= 2;
+        shrink2x = true;
+    }
+
+    bool wLimitExcited = m_ri.max_texture_width > 0 && w > Uint32(m_ri.max_texture_width);
+    bool hLimitExcited = m_ri.max_texture_height > 0 && h > Uint32(m_ri.max_texture_height);
+
+    if(wLimitExcited || hLimitExcited || shrink2x)
+    {
+        if(!shrink2x)
+        {
+            target.w_orig = int(w);
+            target.h_orig = int(h);
+        }
 
         // WORKAROUND: down-scale too big textures
         if(w > Uint32(m_ri.max_texture_width))
@@ -1099,15 +1216,18 @@ void FrmMain::lazyLoad(StdPicture &target)
         if(h > Uint32(m_ri.max_texture_height))
             h = Uint32(m_ri.max_texture_height);
 
-        pLogWarning("Texture is too big for a given hardware limit (%dx%d). "
-                    "Shrinking texture to %dx%d, quality may be distorted!",
-                    m_ri.max_texture_width, m_ri.max_texture_height,
-                    w, h);
+        if(wLimitExcited || hLimitExcited)
+        {
+            pLogWarning("Texture is too big for a given hardware limit (%dx%d). "
+                        "Shrinking texture to %dx%d, quality may be distorted!",
+                        m_ri.max_texture_width, m_ri.max_texture_height,
+                        w, h);
+        }
 
-        FIBITMAP *d = FreeImage_Rescale(sourceImage, int(w), int(h));
+        FIBITMAP *d = FreeImage_Rescale(sourceImage, int(w), int(h), FILTER_BOX);
         if(d)
         {
-            FreeImage_Unload(sourceImage);
+            GraphicsHelps::closeImage(sourceImage);
             sourceImage = d;
         }
         target.w_scale = float(w) / float(target.w_orig);
@@ -1311,7 +1431,7 @@ void FrmMain::toggleGifRecorder()
         {
             m_gif.enabled = true;
             m_gif.doFinalize = false;
-            PlaySound(6);
+            PlaySound(SFX_PlayerGrow);
         }
 
         m_gif.worker = SDL_CreateThread(processRecorder_action, "gif_recorder", reinterpret_cast<void *>(&m_gif));
@@ -1321,11 +1441,11 @@ void FrmMain::toggleGifRecorder()
         if(!m_gif.doFinalize)
         {
             m_gif.doFinalize = true;
-            PlaySound(5);
+            PlaySound(SFX_PlayerShrink);
         }
         else
         {
-            PlaySound(3);
+            PlaySound(SFX_BlockHit);
         }
     }
 }
@@ -1540,6 +1660,8 @@ void FrmMain::clearAllTextures()
 
 void FrmMain::clearBuffer()
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif
@@ -1549,6 +1671,8 @@ void FrmMain::clearBuffer()
 
 void FrmMain::renderRect(int x, int y, int w, int h, float red, float green, float blue, float alpha, bool filled)
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif
@@ -1570,6 +1694,8 @@ void FrmMain::renderRect(int x, int y, int w, int h, float red, float green, flo
 
 void FrmMain::renderRectBR(int _left, int _top, int _right, int _bottom, float red, float green, float blue, float alpha)
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif
@@ -1587,6 +1713,8 @@ void FrmMain::renderRectBR(int _left, int _top, int _right, int _bottom, float r
 
 void FrmMain::renderCircle(int cx, int cy, int radius, float red, float green, float blue, float alpha, bool filled)
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif
@@ -1627,6 +1755,8 @@ void FrmMain::renderTextureI(int xDst, int yDst, int wDst, int hDst,
                              double rotateAngle, SDL_Point *center, unsigned int flip,
                              float red, float green, float blue, float alpha)
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif
@@ -1643,6 +1773,15 @@ void FrmMain::renderTextureI(int xDst, int yDst, int wDst, int hDst,
     }
 
     SDL_assert_release(tx.texture);
+
+    // automatic flipping based on SMBX style!
+    unsigned int mode = 0;
+    while(ySrc >= tx.h && mode < 3)
+    {
+        ySrc -= tx.h;
+        mode += 1;
+    }
+    flip ^= mode;
 
     // Don't go more than size of texture
     if(xSrc + wDst > tx.w)
@@ -1681,6 +1820,8 @@ void FrmMain::renderTextureScaleI(int xDst, int yDst, int wDst, int hDst,
                              double rotateAngle, SDL_Point *center, unsigned int flip,
                              float red, float green, float blue, float alpha)
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif
@@ -1697,6 +1838,15 @@ void FrmMain::renderTextureScaleI(int xDst, int yDst, int wDst, int hDst,
     }
 
     SDL_assert_release(tx.texture);
+
+    // automatic flipping based on SMBX style!
+    unsigned int mode = 0;
+    while(ySrc >= tx.h && mode < 3)
+    {
+        ySrc -= tx.h;
+        mode += 1;
+    }
+    flip ^= mode;
 
     // Don't go more than size of texture
     if(xSrc + wSrc > tx.w)
@@ -1782,6 +1932,8 @@ void FrmMain::renderTextureFL(double xDst, double yDst, double wDst, double hDst
 
 void FrmMain::renderTexture(int xDst, int yDst, StdPicture &tx, float red, float green, float blue, float alpha)
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif
@@ -1817,6 +1969,8 @@ void FrmMain::renderTexture(int xDst, int yDst, StdPicture &tx, float red, float
 
 void FrmMain::renderTextureScale(int xDst, int yDst, int wDst, int hDst, StdPicture &tx, float red, float green, float blue, float alpha)
 {
+    if(m_headless)
+        return;
 #ifdef __ANDROID__
     SDL_assert(!m_blockRender);
 #endif

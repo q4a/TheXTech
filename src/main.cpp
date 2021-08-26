@@ -4,34 +4,42 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef NO_SDL
 #include <SDL2/SDL.h>
+#else
+#include "SDL_supplement.h"
+#endif
+
+#ifndef __3DS__
+#include <tclap/CmdLine.h>
+#include <CrashHandler/crash_handler.h>
+#else
+uint32_t __stacksize__ = 0x00020000;
+#include <3ds.h>
+#endif
 
 #include "game_main.h"
+#include "sound.h"
+#include "video.h"
 #include "main/game_info.h"
+#include "compat.h"
 #include <AppPath/app_path.h>
-#include <tclap/CmdLine.h>
 #include <Utils/strings.h>
 #include <Utils/files.h>
-#include <CrashHandler/crash_handler.h>
 
 #ifdef ENABLE_XTECH_LUA
 #include "xtech_lua_main.h"
@@ -135,25 +143,32 @@ static void strToPlayerSetup(int player, const std::string &setupString)
 extern "C"
 int main(int argc, char**argv)
 {
+#ifdef __3DS__
+    romfsInit();
+#endif
+
     CmdLineSetup_t setup;
 
+#ifndef __3DS__
     CrashHandler::initSigs();
+#endif
 
     AppPathManager::initAppPath();
     AppPath = AppPathManager::assetsRoot();
 
     OpenConfig_preSetup();
 
-    setup.renderType = CmdLineSetup_t::RenderType(RenderMode);
-
     testPlayer.fill(Player_t());
+    testPlayer[1].Character = 1;
+    testPlayer[2].Character = 2;
 
+#ifndef __3DS__
     try
     {
         // Define the command line object.
-        TCLAP::CmdLine  cmd("TheXTech\n"
-                            "Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>\n"
-                            "This program is distributed under the MIT license\n", ' ', "1.3");
+        TCLAP::CmdLine  cmd("TheXTech Engine\n"
+                            "Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>\n\n"
+                            "This program is distributed under the MIT license\n\n", ' ', "1.3");
 
         TCLAP::ValueArg<std::string> customAssetsPath("c", "assets-root", "Specify the different assets root directory to play",
                                                       false, "",
@@ -162,14 +177,21 @@ int main(int argc, char**argv)
 
 
         TCLAP::SwitchArg switchFrameSkip("f", "frameskip", "Enable frame skipping mode", false);
+        TCLAP::SwitchArg switchDisableFrameSkip(std::string(), "no-frameskip", "Disable frame skipping mode", false);
         TCLAP::SwitchArg switchNoSound("s", "no-sound", "Disable sound", false);
+        TCLAP::SwitchArg switchNoVideo("", "no-video", "Disable video", false);
         TCLAP::SwitchArg switchNoPause("p", "never-pause", "Never pause game when window losts a focus", false);
-        TCLAP::ValueArg<std::string> renderType("r", "render", "Render mode: sw (software), hw (hardware), vsync (hardware with vsync)",
+        TCLAP::SwitchArg switchBgInput(std::string(), "bg-input", "Allow background input for joysticks", false);
+        TCLAP::ValueArg<std::string> renderType("r", "render", "Sets the graphics mode:\n"
+                                                "  sw - software render (fallback)\n"
+                                                "  hw - hardware accelerated render [Default]\n"
+                                                "  vsync - hardware accelerated with the v-sync enabled",
                                                 false, "",
                                                 "render type",
                                                 cmd);
 
-        TCLAP::ValueArg<std::string> testLevel("l", "leveltest", "Start a level test of a given level file. OBSOLETE OPTION: now you able to specify the file path without -l or --leveltest argument.",
+        TCLAP::ValueArg<std::string> testLevel("l", "leveltest", "Start a level test of a given level file.\n"
+                                                "[OBSOLETE OPTION]: now you able to specify the file path without -l or --leveltest argument.",
                                                 false, "",
                                                 "file path",
                                                 cmd);
@@ -183,20 +205,22 @@ int main(int argc, char**argv)
 
         TCLAP::ValueArg<std::string> playerCharacter1("1",
                                                       "player1",
-                                                      "Setup of playable character for player 1:"
-                                                      "   Semi-colon separated key-argument values:\n"
-                                                      "   c - character, s - state, m - mount, t - mount type. Example:"
-                                                      "   c1;s2;m3;t0 - Character as 1, State as 2, Mount as 3, Mount type as 0",
+                                                      "Setup of playable character for player 1:\n"
+                                                      "  Semicolon separated key-argument values:\n"
+                                                      "  c - character, s - state, m - mount, t - mount type.\n\n"
+                                                      "Example:\n"
+                                                      "  c1;s2;m3;t0 - Character as 1, State as 2, Mount as 3, M.Type as 0",
                                                       false, "",
                                                       "c1;s2;m0;t0",
                                                       cmd);
 
         TCLAP::ValueArg<std::string> playerCharacter2("2",
                                                       "player2",
-                                                      "Setup of playable character for player 2:"
-                                                      "   Semi-colon separated key-argument values:\n"
-                                                      "   c - character, s - state, m - mount, t - mount type. Example:"
-                                                      "   c1;s2;m3;t0 - Character as 1, State as 2, Mount as 3, Mount type as 0",
+                                                      "Setup of playable character for player 2:\n"
+                                                      "  Semicolon separated key-argument values:\n"
+                                                      "  c - character, s - state, m - mount, t - mount type.\n\n"
+                                                      "Example:\n"
+                                                      "  c1;s2;m3;t0 - Character as 1, State as 2, Mount as 3, M.Type as 0",
                                                       false, "",
                                                       "c1;s2;m0;t0",
                                                       cmd);
@@ -208,26 +232,50 @@ int main(int argc, char**argv)
         TCLAP::SwitchArg switchTestMagicHand("k", "magic-hand", "Enable magic hand functionality while level test running", false);
         TCLAP::SwitchArg switchTestInterprocess("i", "interprocessing", "Enable an interprocessing mode with Editor", false);
 
+        TCLAP::ValueArg<std::string> compatLevel(std::string(), "compat-level",
+                                                   "Enforce the specific gameplay compatibiltiy level. Supported values:\n"
+                                                   "  modern - TheXTech native, all features and fixes enabled [Default]\n"
+                                                   "  smbx2  - Disables all features and bugfixes except fixed at SMBX2\n"
+                                                   "  smbx13 - Enforces the full compatibility with the SMBX 1.3 behaviour\n"
+                                                   "\n"
+                                                   "  Note: If speed-run mode is set, the compatibility level will be overriden by the speed-run mode",
+                                                    false, "modern",
+                                                   "modern, smbx2, smbx3",
+                                                   cmd);
         TCLAP::ValueArg<unsigned int> speedRunMode(std::string(), "speed-run-mode",
                                                    "Enable the speed-runer mode: the playthrough timer will be shown, "
                                                    "and some gameplay limitations will be enabled. Supported values:\n"
-                                                   "   0 - Disabled [Default]\n"
-                                                   "   1 - TheXTech native\n"
-                                                   "   2 - Disable time-winning updates\n"
-                                                   "   3 - Strict vanilla, enable all bugs\n",
+                                                   "  0 - Disabled [Default]\n"
+                                                   "  1 - TheXTech native\n"
+                                                   "  2 - Disable time-winning updates (SMBX2 mode)\n"
+                                                   "  3 - Strict vanilla SMBX 1.3, enable all bugs",
                                                     false, 0u,
                                                    "0, 1, 2, or 3",
                                                    cmd);
         TCLAP::SwitchArg switchSpeedRunSemiTransparent(std::string(), "speed-run-semitransparent",
                                                        "Make the speed-runner mode timer be drawn transparently", false);
+        TCLAP::SwitchArg switchDisplayControls(std::string(), "show-controls", "Display current controller state while the game process", false);
 
         TCLAP::SwitchArg switchVerboseLog(std::string(), "verbose", "Enable log output into the terminal", false);
 
         TCLAP::UnlabeledValueArg<std::string> inputFileNames("levelpath", "Path to level file to run the test", false, std::string(), "path to file");
 
+        TCLAP::ValueArg<int> recordReplayId(std::string(), "replay-id",
+                                                   "Index of recording data to replay.\n",
+                                                    false, -1,
+                                                   "index found in recording filename",
+                                                   cmd);
+        TCLAP::SwitchArg recordReplay(std::string(), "replay",
+                                        "Replay previous game data.", false);
+        TCLAP::SwitchArg recordRecord(std::string(), "record",
+                                        "Record your gameplay data.", false);
+
         cmd.add(&switchFrameSkip);
+        cmd.add(&switchDisableFrameSkip);
         cmd.add(&switchNoSound);
+        cmd.add(&switchNoVideo);
         cmd.add(&switchNoPause);
+        cmd.add(&switchBgInput);
         cmd.add(&switchBattleMode);
 
         cmd.add(&switchTestGodMode);
@@ -238,7 +286,11 @@ int main(int argc, char**argv)
         cmd.add(&switchTestInterprocess);
         cmd.add(&switchVerboseLog);
         cmd.add(&switchSpeedRunSemiTransparent);
+        cmd.add(&switchDisplayControls);
         cmd.add(&inputFileNames);
+
+        cmd.add(&recordReplay);
+        cmd.add(&recordRecord);
 
         cmd.parse(argc, argv);
 
@@ -250,17 +302,24 @@ int main(int argc, char**argv)
             AppPath = AppPathManager::assetsRoot();
         }
 
-        setup.frameSkip = switchFrameSkip.getValue();
-        setup.noSound   = switchNoSound.getValue();
-        setup.neverPause = switchNoPause.getValue();
+        setup.frameSkip = !switchDisableFrameSkip.getValue() && (switchFrameSkip.getValue() || g_videoSettings.enableFrameSkip);
+        setup.noSound   = switchNoSound.getValue() || g_audioSetup.disableSound;
+        setup.noVideo   = switchNoVideo.getValue();
+        setup.neverPause = switchNoPause.getValue() || g_videoSettings.allowBgWork;
+        setup.allowBgInput = switchBgInput.getValue() || g_videoSettings.allowBgControllerInput;
+        if(setup.allowBgInput) // The BG-input depends on the never-pause option
+            setup.neverPause = setup.allowBgInput;
 
         std::string rt = renderType.getValue();
         if(rt == "sw")
-            setup.renderType = CmdLineSetup_t::RENDER_SW;
+            setup.renderType = SDL_RENDERER_SOFTWARE;
         else if(rt == "vsync")
-            setup.renderType = CmdLineSetup_t::RENDER_VSYNC;
+            setup.renderType = RENDER_ACCELERATED_VSYNC;
         else if(rt == "hw")
-            setup.renderType = CmdLineSetup_t::RENDER_HW;
+            setup.renderType = RENDER_ACCELERATED;
+
+        if(setup.renderType > RENDER_AUTO)
+            g_videoSettings.renderMode = setup.renderType;
 
         setup.testLevel = testLevel.getValue();
 
@@ -294,12 +353,51 @@ int main(int argc, char**argv)
 
         setup.testGodMode = switchTestGodMode.getValue();
         setup.testGrabAll = switchTestGrabAll.getValue();
-        setup.testShowFPS = switchTestShowFPS.getValue();
+        setup.testShowFPS = switchTestShowFPS.getValue() || g_videoSettings.showFrameRate;
         setup.testMaxFPS = switchTestMaxFPS.getValue();
         setup.testMagicHand = switchTestMagicHand.getValue();
 
+        std::string compatModeVal = compatLevel.getValue();
+        if(compatModeVal == "smbx2")
+            setup.compatibilityLevel = COMPAT_SMBX2;
+        else if(compatModeVal == "smbx13")
+            setup.compatibilityLevel = COMPAT_SMBX13;
+        else if(compatModeVal == "modern")
+            setup.compatibilityLevel = COMPAT_MODERN;
+        else
+        {
+            std::cerr << "Error: Invalid value for the --compat-level argument: " << compatModeVal << std::endl;
+            std::cerr.flush();
+            return 2;
+        }
+
         setup.speedRunnerMode = speedRunMode.getValue();
         setup.speedRunnerSemiTransparent = switchSpeedRunSemiTransparent.getValue();
+        setup.showControllerState = switchDisplayControls.getValue();
+
+        setup.recordReplay = recordReplay.getValue();
+        setup.recordRecord = recordRecord.getValue();
+        setup.recordReplayId = recordReplayId.getValue();
+
+        if(setup.noVideo)
+        {
+            setup.testMaxFPS = true;
+            setup.neverPause = true;
+            setup.noSound = true;
+        }
+
+        if(setup.recordReplayId != -1)
+            setup.recordReplay = true;
+
+        if(setup.recordReplay || setup.recordRecord)
+            setup.frameSkip = false;
+
+        if(setup.testLevelMode && setup.recordReplay)
+        {
+            setup.testShowFPS = true;
+            setup.testMaxFPS = true;
+            setup.neverPause = true;
+        }
 
         if(setup.speedRunnerMode >= 1) // Always show FPS and don't pause the game work when focusing other windows
         {
@@ -313,6 +411,7 @@ int main(int argc, char**argv)
         std::cerr.flush();
         return 2;
     }
+#endif // #ifndef __3DS__
 
     initGameInfo();
 
@@ -352,6 +451,10 @@ int main(int argc, char**argv)
 #endif
 
     frmMain.freeSDL();
+
+#ifdef __3DS__
+    romfsExit();
+#endif
 
     return ret;
 }

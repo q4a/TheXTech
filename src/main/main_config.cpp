@@ -4,32 +4,34 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef NO_SDL
 #include <SDL2/SDL_audio.h>
+#endif
 
 #include "../globals.h"
 #include "../game_main.h"
 #include "../graphics.h"
 #include "../sound.h"
+#include "../video.h"
 #include "../control/joystick.h"
+#include "../config.h"
+
+#include "speedrunner.h"
+#include "record.h"
 
 #include <Utils/files.h>
 #include <Utils/strings.h>
@@ -38,55 +40,95 @@
 #include <AppPath/app_path.h>
 #include <Logger/logger.h>
 
+Config_t g_config;
+VideoSettings_t g_videoSettings;
 
 void OpenConfig_preSetup()
 {
+    const IniProcessing::StrEnumMap renderMode =
+    {
+        {"sw", RENDER_SOFTWARE},
+        {"hw", RENDER_ACCELERATED},
+        {"vsync", RENDER_ACCELERATED_VSYNC},
+        {"0", RENDER_SOFTWARE},
+        {"1", RENDER_ACCELERATED},
+        {"2", RENDER_ACCELERATED_VSYNC}
+    };
+
+#ifndef NO_SDL
+    const IniProcessing::StrEnumMap sampleFormats =
+    {
+        {"s8", AUDIO_S8},
+        {"pcm_s8", AUDIO_S8},
+        {"u8", AUDIO_U8},
+        {"pcm_u8", AUDIO_U8},
+        {"s16", AUDIO_S16SYS},
+        {"pcm_s16", AUDIO_S16SYS},
+        {"s16le", AUDIO_S16LSB},
+        {"pcm_s16le", AUDIO_S16LSB},
+        {"s16be", AUDIO_S16MSB},
+        {"pcm_s16be", AUDIO_S16MSB},
+        {"u16", AUDIO_U16SYS},
+        {"pcm_u16", AUDIO_U16SYS},
+        {"u16le", AUDIO_U16LSB},
+        {"pcm_u16le", AUDIO_U16LSB},
+        {"u16be", AUDIO_U16MSB},
+        {"pcm_u16be", AUDIO_U16MSB},
+        {"s32", AUDIO_S32SYS},
+        {"pcm_s32", AUDIO_S32SYS},
+        {"s32le", AUDIO_S32LSB},
+        {"pcm_s32le", AUDIO_S32LSB},
+        {"s32be", AUDIO_S32MSB},
+        {"pcm_s32be", AUDIO_S32MSB},
+        {"float32", AUDIO_F32SYS},
+        {"pcm_f32", AUDIO_F32SYS},
+        {"float32le", AUDIO_F32LSB},
+        {"pcm_f32le", AUDIO_F32LSB},
+        {"float32be", AUDIO_F32MSB},
+        {"pcm_f32be", AUDIO_F32MSB}
+    };
+#endif
+
     std::string configPath = AppPathManager::settingsFileSTD();
+
     if(Files::fileExists(configPath))
     {
         IniProcessing config(configPath);
-        config.beginGroup("main");
-        config.read("render", RenderMode, 1);
-        if(RenderMode > 2) // Allowed values: 0, 1 and 2
-            RenderMode = 2;
+
+        config.beginGroup("video");
+        config.readEnum("render", g_videoSettings.renderMode, (int)RENDER_ACCELERATED, renderMode);
+        config.read("background-work", g_videoSettings.allowBgWork, false);
+        config.read("background-controller-input", g_videoSettings.allowBgControllerInput, false);
+        config.read("frame-skip", g_videoSettings.enableFrameSkip, true);
+        config.read("show-fps", g_videoSettings.showFrameRate, false);
+        config.read("scale-down-all-textures", g_videoSettings.scaleDownAllTextures, false);
+        config.read("display-controllers", g_drawController, false);
         config.endGroup();
 
+#ifndef NO_SDL
         config.beginGroup("sound");
+        config.read("disable-sound", g_audioSetup.disableSound, false);
         config.read("sample-rate", g_audioSetup.sampleRate, 44100);
         config.read("channels", g_audioSetup.channels, 2);
-        IniProcessing::StrEnumMap sampleFormats =
-        {
-            {"s8", AUDIO_S8},
-            {"pcm_s8", AUDIO_S8},
-            {"u8", AUDIO_U8},
-            {"pcm_u8", AUDIO_U8},
-            {"s16", AUDIO_S16SYS},
-            {"pcm_s16", AUDIO_S16SYS},
-            {"s16le", AUDIO_S16LSB},
-            {"pcm_s16le", AUDIO_S16LSB},
-            {"s16be", AUDIO_S16MSB},
-            {"pcm_s16be", AUDIO_S16MSB},
-            {"u16", AUDIO_U16SYS},
-            {"pcm_u16", AUDIO_U16SYS},
-            {"u16le", AUDIO_U16LSB},
-            {"pcm_u16le", AUDIO_U16LSB},
-            {"u16be", AUDIO_U16MSB},
-            {"pcm_u16be", AUDIO_U16MSB},
-            {"s32", AUDIO_S32SYS},
-            {"pcm_s32", AUDIO_S32SYS},
-            {"s32le", AUDIO_S32LSB},
-            {"pcm_s32le", AUDIO_S32LSB},
-            {"s32be", AUDIO_S32MSB},
-            {"pcm_s32be", AUDIO_S32MSB},
-            {"float32", AUDIO_F32SYS},
-            {"pcm_f32", AUDIO_F32SYS},
-            {"float32le", AUDIO_F32LSB},
-            {"pcm_f32le", AUDIO_F32LSB},
-            {"float32be", AUDIO_F32MSB},
-            {"pcm_f32be", AUDIO_F32MSB}
-        };
         config.readEnum("format", g_audioSetup.format, (uint16_t)AUDIO_F32, sampleFormats);
         config.read("buffer-size", g_audioSetup.bufferSize, 512);
+        config.endGroup();
+#endif // #ifndef NO_SDL
+
+        config.beginGroup("video");
+#ifndef FIXED_RES
+        config.read("internal-width", g_config.InternalW, 800);
+        config.read("internal-height", g_config.InternalH, 600);
+#endif
+        IniProcessing::StrEnumMap scaleModes =
+        {
+            {"linear", SCALE_DYNAMIC_LINEAR},
+            {"integer", SCALE_DYNAMIC_INTEGER},
+            {"nearest", SCALE_DYNAMIC_NEAREST},
+            {"1x", SCALE_FIXED_1X},
+            {"2x", SCALE_FIXED_2X},
+        };
+        config.readEnum("scale-mode", g_videoSettings.scaleMode, (int)SCALE_DYNAMIC_NEAREST, scaleModes);
         config.endGroup();
     }
 }
@@ -131,12 +173,18 @@ void OpenConfig()
         config.beginGroup("main");
         config.read("release", FileRelease, curRelease);
         config.read("full-screen", resBool, false);
-        config.read("frame-skip", FrameSkip, FrameSkip);
-        config.read("show-fps", ShowFPS, ShowFPS);
+        config.read("record-gameplay", g_recordControlRecord, g_recordControlRecord);
+        config.read("new-editor", g_config.UseNewEditor, false);
+        config.endGroup();
+
+        config.beginGroup("video");
+        config.read("full-screen", resBool, resBool);
         config.endGroup();
 
         config.beginGroup("gameplay");
         config.read("ground-pound-by-alt-run", GameplayPoundByAltRun, false);
+        config.read("world-map-fast-move", g_config.FastMove, false);
+        config.read("show-dragon-coins", g_config.ShowDragonCoins, false);
         config.endGroup();
 
         config.beginGroup("effects");
@@ -233,15 +281,47 @@ void SaveConfig()
 
     config.beginGroup("main");
     config.setValue("release", curRelease);
-#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) // Don't remember fullscreen state for Emscripten!
-    config.setValue("full-screen", resChanged);
-#endif
+    config.setValue("new-editor", g_config.UseNewEditor);
     // TODO: Make sure, saving of those settings will not been confused by line arguments
+    // by separating config settings from global active settings
 //    config.setValue("frame-skip", FrameSkip);
 //    config.setValue("show-fps", ShowFPS);
+//    config.setValue("record-gameplay", g_recordControlRecord);
     config.endGroup();
 
+#if !defined(NO_SDL)
+#   if !defined(__3DS__)
+    config.beginGroup("video");
+    {
+#       if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) // Don't remember fullscreen state for Emscripten!
+        config.setValue("full-screen", resChanged);
+#       endif
+#       ifndef FIXED_RES
+        config.setValue("internal-width", g_config.InternalW);
+        config.setValue("internal-height", g_config.InternalH);
+#       endif
+        config.setValue("scale-mode", ScaleMode_strings.at(g_videoSettings.scaleMode));
+
+        std::unordered_map<int, std::string> renderMode =
+        {
+            {RENDER_SOFTWARE, "sw"},
+            {RENDER_ACCELERATED, "hw"},
+            {RENDER_ACCELERATED_VSYNC, "vsync"},
+        };
+
+        config.setValue("render", renderMode[g_videoSettings.renderMode]);
+        config.setValue("background-work", g_videoSettings.allowBgWork);
+        config.setValue("background-controller-input", g_videoSettings.allowBgControllerInput);
+        config.setValue("frame-skip", g_videoSettings.enableFrameSkip);
+        config.setValue("show-fps", g_videoSettings.showFrameRate);
+        config.setValue("scale-down-all-textures", g_videoSettings.scaleDownAllTextures);
+        config.setValue("display-controllers", g_drawController);
+    }
+    config.endGroup();
+#   endif // !defined(__3DS__)
+
     config.beginGroup("sound");
+    config.setValue("disable-sound", g_audioSetup.disableSound);
     config.setValue("sample-rate", g_audioSetup.sampleRate);
     config.setValue("channels", g_audioSetup.channels);
     config.setValue("buffer-size", g_audioSetup.bufferSize);
@@ -259,9 +339,12 @@ void SaveConfig()
     };
     config.setValue("format", formats_back.at(g_audioSetup.format));
     config.endGroup();
+#endif // !defined(NO_SDL)
 
     config.beginGroup("gameplay");
     config.setValue("ground-pound-by-alt-run", GameplayPoundByAltRun);
+    config.setValue("world-map-fast-move", g_config.FastMove);
+    config.setValue("show-dragon-coins", g_config.ShowDragonCoins);
     config.endGroup();
 
     config.beginGroup("effects");

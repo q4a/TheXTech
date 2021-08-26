@@ -4,26 +4,26 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef NO_SDL
 #include <SDL2/SDL_timer.h>
+#endif
+#ifndef NO_INTPROC
+#include <InterProcess/intproc.h>
+#endif
 
 #include "globals.h"
 #include "load_gfx.h"
@@ -31,7 +31,6 @@
 #include <Utils/files.h>
 #include <Utils/dir_list_ci.h>
 #include <DirManager/dirman.h>
-#include <InterProcess/intproc.h>
 #include <fmt_format_ne.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -77,6 +76,11 @@ static std::set<std::string> g_customLevelCGFXPathsCache;
 static std::vector<GFXBackup_t> g_defaultWorldGfxBackup;
 static std::set<std::string> g_customWorldCGFXPathsCache;
 
+static std::string getGfxDir()
+{
+    return AppPath + "graphics/";
+}
+
 static void loadCGFX(const std::set<std::string> &files,
                      const std::string &origPath,
                      const std::string &dEpisode,
@@ -93,6 +97,9 @@ static void loadCGFX(const std::set<std::string> &files,
     std::string imgPathC = dEpisode + dData + "/" + s_dirEpisode.resolveFileCase(fName + ".png");
     std::string gifPathC = dEpisode + dData + "/" + s_dirCustom.resolveFileCase(fName + ".gif");
     std::string maskPathC = dEpisode + dData + "/" + s_dirCustom.resolveFileCase(fName + "m.gif");
+
+    std::string maskPathFall = getGfxDir() + "fallback/" + fName + "m.gif";
+
     bool alreadyLoaded = false;
 
     std::string loadedPath;
@@ -143,11 +150,18 @@ static void loadCGFX(const std::set<std::string> &files,
             maskToUse = maskPathC;
         else if(files.find(maskPath) != files.end())
             maskToUse = maskPath;
+        else if(files.find(maskPathFall) != files.end())
+            maskToUse = maskPathFall;
 
 #ifdef DEBUG_BUILD
         pLogDebug("Trying to load custom GFX: %s with mask %s", imgToUse.c_str(), maskToUse.c_str());
 #endif
+#ifdef __3DS__
+        // 3DS never uses masks
+        newTexture = frmMain.lazyLoadPicture(imgToUse);
+#else
         newTexture = frmMain.lazyLoadPicture(imgToUse, maskToUse, origPath);
+#endif
         success = newTexture.inited;
         loadedPath = imgToUse;
     }
@@ -223,7 +237,7 @@ static void restoreWorldBackupTextures()
 void LoadGFX()
 {
     std::string p;
-    std::string GfxRoot = AppPath + "graphics/";
+    std::string GfxRoot = getGfxDir();
 
     for(int c = 0; c < numCharacters; ++c)
     {
@@ -470,15 +484,26 @@ static SDL_INLINE void getExistingFiles(std::set<std::string> &existingFiles)
     DirMan searchDir(FileNamePath);
     std::vector<std::string> files;
     searchDir.getListOfFiles(files, {".png", ".gif"});
+
     for(auto &p : files)
         existingFiles.insert(FileNamePath + p);
 
-    if(DirMan::exists(FileNamePath + FileName))
+    std::string epFileData = FileNamePath + FileName;
+    if(DirMan::exists(epFileData))
     {
-        DirMan searchDataDir(FileNamePath + FileName);
+        DirMan searchDataDir(epFileData);
         searchDataDir.getListOfFiles(files, {".png", ".gif"});
         for(auto &p : files)
-            existingFiles.insert(FileNamePath + FileName  + "/"+ p);
+            existingFiles.insert(epFileData  + "/"+ p);
+    }
+
+    std::string fallBacksDir = getGfxDir() + "fallback";
+    if(DirMan::exists(fallBacksDir))
+    {
+        DirMan searchDataDir(fallBacksDir);
+        searchDataDir.getListOfFiles(files, {"m.gif"});
+        for(auto &p : files)
+            existingFiles.insert(fallBacksDir  + "/"+ p);
     }
 }
 
@@ -640,11 +665,13 @@ void UpdateLoadREAL()
 {
     std::string state;
     bool draw = false;
+#ifndef NO_INTPROC
     if(IntProc::isEnabled())
     {
         state = IntProc::getState();
         draw = true;
     }
+#endif
 
     static float alphaFader = 1.0f;
 
@@ -671,18 +698,47 @@ void UpdateLoadREAL()
     if(draw)
     {
         frmMain.setTargetTexture();
+#ifdef __3DS__
+        frmMain.initDraw(0);
+#endif
         frmMain.clearBuffer();
+
+        int sh_w = ScreenW / 2;
+        int gh_w = GFX.MenuGFX[4].w / 2;
+        int sh_h = ScreenH / 2;
+        int gh_h = GFX.MenuGFX[4].h / 2;
+
+        int Left    = sh_w - gh_w;
+        int Top     = sh_h - gh_h;
+        int Right   = sh_w + gh_w;
+        int Bottom  = sh_h + gh_h;
+
+        if(Left < 0)
+            Left = 0;
+
+        if(Top < 0)
+            Top = 0;
+
+        if(Right > ScreenW)
+            Right = ScreenW;
+
+        if(Bottom > ScreenH)
+            Bottom = ScreenH;
+
         if(!gfxLoaderTestMode)
-            frmMain.renderTexture(0, 0, GFX.MenuGFX[4]);
+        {
+            frmMain.renderTexture(sh_w - gh_w, sh_h - gh_h, GFX.MenuGFX[4]);
+        }
         else
         {
             if(!state.empty())
-                SuperPrint(state, 3, 10, 10);
+                SuperPrint(state, 3, Left + 10, Top + 10);
             else
-                SuperPrint("Loading data...", 3, 10, 10);
+                SuperPrint("Loading data...", 3, Left + 10, Top + 10);
         }
-        frmMain.renderTexture(632, 576, GFX.Loader);
-        frmMain.renderTexture(760, 560, GFX.LoadCoin.w, GFX.LoadCoin.h / 4, GFX.LoadCoin, 0, 32 * LoadCoins);
+
+        frmMain.renderTexture(Right - 168, Bottom - 24, GFX.Loader);
+        frmMain.renderTexture(Right - 40, Bottom - 40, GFX.LoadCoin.w, GFX.LoadCoin.h / 4, GFX.LoadCoin, 0, 32 * LoadCoins);
 
         if(gfxLoaderThreadingMode && alphaFader >= 0.f)
             frmMain.renderRect(0, 0, ScreenW, ScreenH, 0.f, 0.f, 0.f, alphaFader);

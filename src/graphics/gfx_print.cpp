@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <algorithm>
@@ -35,23 +30,24 @@ namespace std
 }
 #endif
 
-void SuperPrintRightAlign(std::string SuperWords, int Font, float X, float Y, float r, float g, float b, float a)
+void SuperPrintRightAlign(const char* SuperChars, int SuperN, int Font, float X, float Y, float r, float g, float b, float a)
 {
     switch(Font)
     {
     default:
     case 1:
     case 4:
-        X -= SuperWords.length() * 18;
+        X -= SuperN * 18;
         break;
     case 2:
-        X -= SuperWords.length() * 16;
+        X -= SuperN * 16;
         break;
     case 3:
     {
         int B = 0;
-        for(auto c : SuperWords)
+        for(int i = 0; i < SuperN; i++)
         {
+            char c = SuperChars[i];
             c = std::toupper(c);
             if(c >= 33 && c <= 126)
             {
@@ -67,10 +63,16 @@ void SuperPrintRightAlign(std::string SuperWords, int Font, float X, float Y, fl
     }
     }
 
-    SuperPrint(SuperWords, Font, X, Y, r, g, b, a);
+    SuperPrint(SuperChars, SuperN, Font, X, Y, r, g, b, a);
 }
 
-void SuperPrint(std::string SuperWords, int Font, float X, float Y,
+void SuperPrintScreenCenter(const char* SuperChars, int SuperN, int Font, float Y, float r, float g, float b, float a)
+{
+    float X = (ScreenW / 2) - ((SuperN * 18) / 2);
+    SuperPrint(SuperChars, SuperN, Font, X, Y, r, g, b, a);
+}
+
+void SuperPrint(const char* SuperChars, int SuperN, int Font, float X, float Y,
                 float r, float g, float b, float a)
 {
 //    int A = 0;
@@ -79,8 +81,9 @@ void SuperPrint(std::string SuperWords, int Font, float X, float Y,
 
     if(Font == 1)
     {
-        for(auto c : SuperWords)
+        for(int i = 0; i < SuperN; i++)
         {
+            char c = SuperChars[i];
             if(c >= '0' && c <= '9')
                 frmMain.renderTexture(int(X + B), int(Y), 16, 14, GFX.Font1[c - '0'], 0, 0, r, g, b, a);
             B += 18;
@@ -88,8 +91,9 @@ void SuperPrint(std::string SuperWords, int Font, float X, float Y,
     }
     else if(Font == 2)
     {
-        for(auto c : SuperWords)
+        for(int i = 0; i < SuperN; i++)
         {
+            char c = SuperChars[i];
             if(c >= 48 && c <= 57) {
                 C = (c - 48) * 16;
                 frmMain.renderTexture(int(X + B), int(Y), 15, 17, GFX.Font2[1], C, 0, r, g, b, a);
@@ -127,8 +131,9 @@ void SuperPrint(std::string SuperWords, int Font, float X, float Y,
     else if (Font == 3)
     {
 //        Do While Len(Words) > 0
-        for(auto c : SuperWords)
+        for(int i = 0; i < SuperN; i++)
         {
+            char c = SuperChars[i];
             c = std::toupper(c);
 //            If Asc(Left(Words, 1)) >= 33 And Asc(Left(Words, 1)) <= 126 Then
             if(c >= 33 && c <= 126)
@@ -157,8 +162,9 @@ void SuperPrint(std::string SuperWords, int Font, float X, float Y,
     else if(Font == 4)
     {
 //        Do While Len(Words) > 0
-        for(auto c : SuperWords)
+        for(int i = 0; i < SuperN; i++)
         {
+            char c = SuperChars[i];
 //            If Asc(Left(Words, 1)) >= 33 And Asc(Left(Words, 1)) <= 126 Then
             if(c >= 33 && c <= 126)
             {
@@ -179,4 +185,19 @@ void SuperPrint(std::string SuperWords, int Font, float X, float Y,
         }
 //    End If
     }
+}
+
+void SuperPrintRightAlign(std::string SuperWords, int Font, float X, float Y, float r, float g, float b, float a)
+{
+    SuperPrintRightAlign(SuperWords.c_str(), SuperWords.size(), Font, X, Y, r, g, b, a);
+}
+
+void SuperPrintScreenCenter(std::string SuperWords, int Font, float Y, float r, float g, float b, float a)
+{
+    SuperPrintScreenCenter(SuperWords.c_str(), SuperWords.size(), Font, Y, r, g, b, a);
+}
+
+void SuperPrint(std::string SuperWords, int Font, float X, float Y, float r, float g, float b, float a)
+{
+    SuperPrint(SuperWords.c_str(), SuperWords.size(), Font, X, Y, r, g, b, a);
 }

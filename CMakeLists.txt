@@ -109,7 +109,8 @@ option(RANGE_ARR_USE_HEAP "Store data of RangeArr<> template in a heap" OFF)
 
 option(ENABLE_ANTICHEAT_TRAP "Enable anti-cheating trap for the \"redigitiscool\" cheat code" OFF)
 option(ENABLE_OLD_CREDITS "Use original Redigit's credits without changes" OFF)
-option(ENABLE_LOGGING "Enable debug logging" ON)
+option(ENABLE_LOGGING "Enable debug logging written into a file (may not work on some platfors)" ON)
+option(NO_INTPROC "Disable Interprocess" OFF)
 
 option(THEXTECH_ENABLE_LUA "Enable lua scripting support" OFF)
 
@@ -126,6 +127,7 @@ set(THEXTECH_EXECUTABLE_NAME "thextech" CACHE STRING "Name of executable file")
 
 if(APPLE)
     set(THEXTECH_PRELOAD_ENVIRONMENT "" CACHE STRING "Path to resources root to pack")
+    option(THEXTECH_PRELOAD_ENVIRONMENT_MANUALLY "Make application look for assets inside the bundle, but don't actually put any assets. The 'Template' app will be produced for manual addition of assets." OFF)
     set(THEXTECH_BUNDLE_NAME "TheXTech" CACHE STRING "Name of bundle folder")
     set(THEXTECH_ICON_NAME "thextech.icns" CACHE STRING "Name of bundle icon file")
     set(THEXTECH_CUSTOM_ICON_PATH "" CACHE STRING "Name of icon file to pack into the bundle")
@@ -143,11 +145,17 @@ if(NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     set(THEXTECH_USER_DIR_NAME "" CACHE STRING "The name of the user directory at user's home to store settings/episodes/etc. The 'PGE_Project/thextech' will be used by default.")
 endif()
 
+if(3DS)
+    set(NO_INTPROC ON CACHE BOOL "Disable interprocess." FORCE)
+    set(USE_STATIC_LIBC ON CACHE BOOL "Must use static linkage on 3DS." FORCE)
+    set(USE_SYSTEM_LIBS OFF CACHE BOOL "Cannot use system libs on 3DS." FORCE)
+endif()
+
 # ============ Customization ==end=========
 
 option(PGEFL_QT_SUPPORT "Build PGE-FL with Qt support [Unneeded]" OFF)
 set(Moondust_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}) # Don't install PGE-FL libraries
-add_subdirectory(lib/PGE_File_Formats)
+add_subdirectory(3rdparty/PGE_File_Formats)
 mark_as_advanced(WITH_UNIT_TESTS PGEFL_QT_SUPPORT)
 
 if(USE_STATIC_LIBC)
@@ -159,8 +167,19 @@ include(lib/FileMapper/FileMapper.cmake)
 include(lib/fmt/fmt.cmake)
 include(lib/IniProcessor/IniProcessor.cmake)
 include(lib/Utils/Utils.cmake)
+include(lib/Logger/logger.cmake)
+include(lib/tclap/tclap.cmake)
 if(WIN32)
     include(lib/CrashHandler/StackWalker/StackWalker.cmake)
+endif()
+
+if(3DS)
+    set(GME_YM2612_EMU "GENS" CACHE STRING "" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_UBSAN OFF CACHE BOOL "" FORCE)
+    set(BUILD_GME_STATIC ON CACHE BOOL "" FORCE)
+    set(GME_ENABLE_ZLIB OFF CACHE BOOL "" FORCE)
+    add_subdirectory(3rdparty/AudioCodecs/libgme)
 endif()
 
 if(THEXTECH_ENABLE_LUA)
@@ -177,8 +196,10 @@ if(EMSCRIPTEN)
     # -DIS_CXX -s USE_PTHREADS=1
 #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s WASM=1 -s 'BINARYEN_METHOD=\"native-wasm\"'")
     #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EMTERPRETIFY=1 -s EMTERPRETIFY_ASYNC=1  -s 'EMTERPRETIFY_FILE=\"pge_engine.binary\"'")
-    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ASSERTIONS=1")
     # -s \"EMTERPRETIFY_WHITELIST=['_main']\"
+    if(CMAKE_BUILD_TYPE_LOWER STREQUAL "debug")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ASSERTIONS=1")
+    endif()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s \"DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['\\$autoResumeAudioContext', '\\$dynCall']\"") #-s USE_SDL=2
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s LLD_REPORT_UNDEFINED -s ERROR_ON_UNDEFINED_SYMBOLS=1 -s ASYNCIFY=1 -lidbfs.js")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s \"EXPORTED_FUNCTIONS=['_main', '_unlockLoadingCustomState']\"")
@@ -192,7 +213,7 @@ if(EMSCRIPTEN)
 endif()
 
 set(A2XT_LIBS pgefl ${UTILS_LIBS})
-set(A2XT_INCS src lib)
+set(A2XT_INCS src lib 3rdparty)
 set(A2XT_DEPS)
 
 add_library(A2XT_Int INTERFACE)
@@ -218,7 +239,7 @@ if(USE_SYSTEM_LIBS)
     list(APPEND A2XT_LIBS ${FREEIMAGELITE_LIB} ${MIXERX_LIB} "${SDL2_LIBRARIES}")
     list(APPEND A2XT_INCS ${SDL2_INCLUDE_DIRS} ${MIXERX_HEAD_DIR} ${FREEIMAGELITE_HEAD_DIR})
     target_link_libraries(A2XT_Int INTERFACE ${A2XT_LIBS})
-else()
+elseif(NOT 3DS)
     include(cmake/library_FreeImage.cmake)
     include(cmake/library_SDLMixerX.cmake)
     list(APPEND A2XT_LIBS PGE_FreeImage)
@@ -238,21 +259,39 @@ set(LIB_SRC
     lib/util.cpp
     lib/AppPath/app_path.cpp
     ${DIRMANAGER_SRCS}
-    ${FILEMAPPER_SRCS}
     ${FMT_SRCS}
-    ${STACK_WALKER_SRCS}
-    lib/CrashHandler/crash_handler.cpp
-    lib/Graphics/graphics_funcs.cpp
-    lib/Graphics/image_size.cpp
-    lib/Graphics/size.cpp
-    lib/Graphics/sizef.cpp
-    lib/InterProcess/editor_pipe.cpp
-    lib/InterProcess/intproc.cpp
     ${INIPROCESSOR_SRCS}
-    lib/Logger/logger_sets.cpp
+    ${LOGGER_SRCS}
     ${UTILS_SRCS}
     ${LIB_SRC_EXTRA}
+    ${PGE_FILE_LIBRARY_SRCS}
 )
+
+if(NOT 3DS)
+    list(APPEND LIB_SRC
+        ${FILEMAPPER_SRCS}
+        ${STACK_WALKER_SRCS}
+        3rdparty/tinyfiledialogs/tinyfiledialogs.c
+        lib/CrashHandler/crash_handler.cpp
+        lib/Graphics/graphics_funcs.cpp
+        lib/Graphics/image_size.cpp
+        lib/Graphics/size.cpp
+        lib/Graphics/sizef.cpp
+    )
+endif()
+
+if(NOT 3DS AND NOT EMSCRIPTEN AND NOT ANDROID)
+    list(APPEND LIB_SRC
+        3rdparty/tinyfiledialogs/tinyfiledialogs.c
+    )
+endif()
+
+if(NOT NO_INTPROC)
+    list(APPEND LIB_SRC
+        lib/InterProcess/editor_pipe.cpp
+        lib/InterProcess/intproc.cpp
+    )
+endif()
 
 if(APPLE)
     file(GLOB PGE_FILE_ICONS "${CMAKE_CURRENT_SOURCE_DIR}/resources/file_icons/*.icns")
@@ -279,12 +318,12 @@ set(THEXTECH_SRC
     src/main/setup_vars.cpp
     src/main/setup_physics.cpp
     src/main/speedrunner.cpp
+    src/main/record.cpp
     src/main/game_save.cpp
     src/main/main_config.cpp
     src/main/level_file.cpp
     src/main/menu_loop.cpp
     src/main/menu_main.cpp
-    src/main/cheat_code.cpp
     src/main/outro_loop.cpp
     src/main/trees.cpp
     src/main/QuadTree/LooseQuadtree-impl.cpp
@@ -292,13 +331,14 @@ set(THEXTECH_SRC
     src/graphics/gfx_update.cpp
     src/graphics/gfx_background.cpp
     src/graphics/gfx_print.cpp
+    src/graphics/gfx_message.cpp
+    src/graphics/gfx_editor.cpp
     src/graphics/gfx_credits.cpp
     src/graphics/gfx_hud.cpp
     src/graphics/gfx_enter_screen.cpp
     src/graphics/gfx_draw_player.cpp
     src/graphics/gfx_special_frames.cpp
     src/graphics/gfx_screen.cpp
-    src/control/joystick.cpp
     src/change_res.cpp
     src/effect.cpp
     src/collision.cpp
@@ -306,11 +346,14 @@ set(THEXTECH_SRC
     src/layers.cpp
     src/custom.cpp
     src/graphics.cpp
-    src/editor.cpp
+    src/editor/editor.cpp
+    src/editor/new_editor.cpp
+    src/editor/write_common.cpp
+    src/editor/write_level.cpp
+    src/editor/write_world.cpp
     src/main.cpp
     src/blocks.cpp
     src/gfx.cpp
-    src/frm_main.cpp
     src/player.cpp
     src/rand.cpp
     src/sorting.cpp
@@ -321,6 +364,28 @@ set(THEXTECH_SRC
     src/npc/npc_bonus.cpp
     src/player/player_update.cpp
 )
+
+if(3DS)
+    list(APPEND THEXTECH_SRC
+        src/3ds/3ds-audio-lib.cpp
+        src/3ds/cheat_code.cpp
+        src/3ds/frm_main.cpp
+        src/3ds/joystick.cpp
+        src/3ds/n3ds-clock.cpp
+        src/3ds/SDL_supplement.cpp
+        src/3ds/second_screen.cpp
+        src/3ds/sound_internal.cpp
+        src/3ds/text_input.cpp
+    )
+else()
+    list(APPEND THEXTECH_SRC
+        src/sound_internal.cpp
+        src/control/joystick.cpp
+        src/frm_main.cpp
+        src/main/cheat_code.cpp
+        src/editor/text_input.cpp
+    )
+endif()
 
 if(WIN32 AND NOT EMSCRIPTEN)
     list(APPEND THEXTECH_SRC resources/thextech.rc)
@@ -375,6 +440,14 @@ if(ANDROID)
         DEPENDS SDL_ApkPackLibs_makeDir "${DEPENDENCIES_INSTALL_DIR}/lib/libhidapi.so" AudioCodecs_Local
     )
     add_dependencies(thextech SDL_ApkPackLibs_hidapi)
+elseif(3DS)
+    add_executable(thextech ${THEXTECH_SRC} ${LIB_SRC})
+    target_include_directories(thextech PRIVATE "3rdparty/AudioCodecs/libgme/include/" SYSTEM)
+    target_link_libraries(thextech PRIVATE gme_static)
+    target_link_libraries(thextech PRIVATE pgefl)
+    target_link_libraries(thextech PRIVATE citro2d citro3d ctru)
+    target_link_libraries(thextech PRIVATE vorbisidec ogg)
+    set_target_properties(thextech PROPERTIES SUFFIX ".elf")
 else()
     add_executable(thextech ${THEXTECH_SRC} ${LIB_SRC})
     pge_set_nopie(thextech)
@@ -410,6 +483,10 @@ if(APPLE)
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${THEXTECH_PRELOAD_ENVIRONMENT}" "$<TARGET_FILE_DIR:thextech>/../Resources/assets"
             COMMENT "Copying assets into bundle..."
         )
+        target_compile_definitions(thextech PRIVATE -DUSE_BUNDLED_ASSETS)
+    endif()
+
+    if(THEXTECH_PRELOAD_ENVIRONMENT_MANUALLY)
         target_compile_definitions(thextech PRIVATE -DUSE_BUNDLED_ASSETS)
     endif()
 
@@ -485,14 +562,30 @@ if(ENABLE_OLD_CREDITS)
 endif()
 
 if(NOT ENABLE_LOGGING)
-    target_compile_definitions(thextech PRIVATE -DDISABLE_LOGGING)
+    target_compile_definitions(thextech PRIVATE -DDISABLE_LOGGING -DNO_FILE_LOGGING)
 endif()
 
 if(EMSCRIPTEN)
     target_compile_definitions(thextech PRIVATE -DPGE_NO_THREADING)
+    target_compile_definitions(thextech PRIVATE -DNO_FILE_LOGGING)
+    target_compile_definitions(thextech PRIVATE -DNO_SCREENSHOT)
 endif()
 
-if(NOT USE_SYSTEM_LIBS)
+if(NO_INTPROC)
+    target_compile_definitions(thextech PRIVATE -DNO_INTPROC)
+endif()
+
+if(3DS)
+    target_compile_definitions(thextech PRIVATE -DPGE_NO_THREADING)
+    target_compile_definitions(thextech PRIVATE -DNO_SCREENSHOT)
+    target_compile_definitions(thextech PRIVATE -DNO_SDL)
+    target_compile_definitions(thextech PRIVATE -DLOW_MEM)
+    target_compile_definitions(thextech PRIVATE -DFIXED_RES)
+    target_compile_definitions(thextech PRIVATE -DPRELOAD_LEVELS)
+    target_compile_definitions(thextech PRIVATE -D__3DS__)
+endif()
+
+if(NOT USE_SYSTEM_LIBS AND A2XT_DEPS)
     add_dependencies(thextech ${A2XT_DEPS})
 endif()
 

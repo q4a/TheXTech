@@ -6,23 +6,20 @@ option(USE_SHARED_FREEIMAGE "Use shared build of FreeImage" OFF)
 option(USE_FREEIMAGE_SYSTEM_LIBS "Let FreeImage to use libPNG and libJPEG from the system" OFF)
 
 if(USE_SHARED_FREEIMAGE)
-    set(libFreeImage_Libs "${DEPENDENCIES_INSTALL_DIR}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}FreeImageLite${PGE_LIBS_DEBUG_SUFFIX}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set_shared_lib(libFreeImage_Libs "${DEPENDENCIES_INSTALL_DIR}/lib" FreeImageLite)
     set(USE_STATIC_FREEIMAGE OFF)
 else()
-    if(WIN32)
-        set(FI_STATIC_SUFFIX "-static")
-    else()
-        set(FI_STATIC_SUFFIX "")
-    endif()
-    set(libFreeImage_Libs "${DEPENDENCIES_INSTALL_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}FreeImageLite${FI_STATIC_SUFFIX}${PGE_LIBS_DEBUG_SUFFIX}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    set_static_lib(libFreeImage_Libs "${DEPENDENCIES_INSTALL_DIR}/lib" FreeImageLite${LIBRARY_STATIC_NAME_SUFFIX})
     set(USE_STATIC_FREEIMAGE ON)
 endif()
 
 ExternalProject_Add(
     FreeImage_Local
     PREFIX ${CMAKE_BINARY_DIR}/external/FreeImage
-    GIT_REPOSITORY https://github.com/WohlSoft/libFreeImage.git
-    UPDATE_COMMAND ""
+#    GIT_REPOSITORY https://github.com/WohlSoft/libFreeImage.git
+#    UPDATE_COMMAND ""
+    DOWNLOAD_COMMAND ""
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/3rdparty/FreeImageLite
     CMAKE_ARGS
         "-DCMAKE_INSTALL_PREFIX=${DEPENDENCIES_INSTALL_DIR}"
         "-DFREEIMAGE_SHARED=${USE_SHARED_FREEIMAGE}"

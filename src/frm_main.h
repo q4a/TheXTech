@@ -4,51 +4,55 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef FRMMAIN_H
 #define FRMMAIN_H
 
+#ifndef NO_SDL
 #include <SDL2/SDL_stdinc.h>
 #include <SDL2/SDL_scancode.h>
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_render.h>
+#else
+#include "SDL_supplement.h"
+#endif
+
+#ifdef __3DS__
+#include <citro3d.h>
+#include <citro2d.h>
+#endif
 
 #include <string>
 #include <set>
 
-#ifndef __EMSCRIPTEN__
-#include <deque>
-#endif
-
-#include <gif_writer.h>
-
 #include "std_picture.h"
 #include "cmd_line_setup.h"
 
+#ifndef NO_SCREENSHOT
+#include <deque>
+#include <gif_writer.h>
 typedef struct SDL_Thread SDL_Thread;
 typedef struct SDL_mutex SDL_mutex;
+#endif
 
 class FrmMain
 {
+    bool m_headless = false;
     std::string m_windowTitle;
+#ifndef NO_SDL
     SDL_Window *m_window = nullptr;
     SDL_Renderer *m_gRenderer = nullptr;
     SDL_Texture  *m_tBuffer = nullptr;
@@ -59,6 +63,26 @@ class FrmMain
     Uint32 m_lastMousePress = 0;
     SDL_Event m_event;
     SDL_RendererInfo m_ri;
+#endif
+#ifdef __3DS__
+    std::set<C2D_SpriteSheet> m_textureBank; // SDL_Texture
+    std::set<StdPicture*> m_bigPictures;
+    uint32_t currentFrame = 0;
+    touchPosition m_lastMousePosition = {0, 0};
+    float depthSlider = 0.;
+
+    uint32_t keys_held = 0;
+    uint32_t keys_pressed = 0;
+    uint32_t keys_released = 0;
+
+    C3D_RenderTarget* top;
+    C3D_RenderTarget* right;
+    C3D_RenderTarget* bottom;
+    Tex3DS_SubTexture layer_subtexs[4];
+    C3D_Tex layer_texs[4];
+    C2D_Image layer_ims[4];
+    C3D_RenderTarget* layer_targets[4];
+#endif
 #ifdef __ANDROID__
     bool m_blockRender = false;
 #endif
@@ -73,9 +97,23 @@ public:
 
     FrmMain();
 
+#ifndef NO_SDL
     SDL_Window *getWindow();
-
     Uint8 getKeyState(SDL_Scancode key);
+#else
+    inline bool getKeyHeld(int id)
+    {
+        return id & keys_held;
+    }
+    inline bool getKeyPressed(int id)
+    {
+        return id & keys_pressed;
+    }
+    inline bool getKeyReleased(int id)
+    {
+        return id & keys_released;
+    }
+#endif
 
     bool initSDL(const CmdLineSetup_t &setup);
     void freeSDL();
@@ -88,6 +126,7 @@ public:
     bool isWindowActive();
     bool hasWindowMouseFocus();
 
+#ifndef NO_SDL
     void eventDoubleClick();
     void eventKeyPress(SDL_Scancode KeyASCII);
     void eventKeyDown(SDL_KeyboardEvent &evt);
@@ -95,9 +134,19 @@ public:
     void eventMouseDown(SDL_MouseButtonEvent &m_event);
     void eventMouseMove(SDL_MouseMotionEvent &m_event);
     void eventMouseUp(SDL_MouseButtonEvent &m_event);
+#endif
+
     void eventResize();
     int setFullScreen(bool fs);
     bool isSdlError();
+
+#ifdef __3DS__
+    bool inFrame = false;
+    void initDraw(int screen = 0);
+    void setLayer(int layer);
+    void toggleDebug();
+    void cancelFrame();
+#endif
 
     void repaint();
     void updateViewport();
@@ -115,19 +164,39 @@ public:
      */
     void setTargetScreen();
 
-
+#ifndef __3DS__
     StdPicture LoadPicture(std::string path, std::string maskPath = std::string(), std::string maskFallbackPath = std::string());
     StdPicture lazyLoadPicture(std::string path, std::string maskPath = std::string(), std::string maskFallbackPath = std::string());
+#else
+    StdPicture LoadPicture(std::string path);
+    StdPicture lazyLoadPicture(std::string path);
+#endif
     void deleteTexture(StdPicture &tx, bool lazyUnload = false);
     void clearAllTextures();
+#ifdef __3DS__
+    bool freeTextureMem();
+#endif
 
     void clearBuffer();
     void renderRect(int x, int y, int w, int h, float red = 1.f, float green = 1.f, float blue = 1.f, float alpha = 1.f, bool filled = true);
     void renderRectBR(int _left, int _top, int _right, int _bottom, float red, float green, float blue, float alpha);
 
+    // this is extremely difficult to implement on some platforms, including 3DS, where circle mode is distinct from polygon mode.
+#ifndef __3DS__
     void renderCircle(int cx, int cy, int radius, float red = 1.f, float green = 1.f, float blue = 1.f, float alpha = 1.f, bool filled = true);
+#endif
 
+    // these operate in render coordinates on 3DS and should not be called by external units
+private:
     // Similar to BitBlt, but without masks, just draw a texture or it's fragment!
+#ifdef __3DS__
+    void renderTexturePrivate(float xDst, float yDst, float wDst, float hDst,
+                             StdPicture &tx,
+                             float xSrc, float ySrc, float wSrc, float hSrc,
+                             float rotateAngle = 0.f, SDL_Point *center = nullptr, unsigned int flip = SDL_FLIP_NONE,
+                             float red = 1.f, float green = 1.f, float blue = 1.f, float alpha = 1.f);
+#endif
+    // 3DS only handles rotation and flipping correctly for non-huge images
     void renderTextureI(int xDst, int yDst, int wDst, int hDst,
                         StdPicture &tx,
                         int xSrc, int ySrc,
@@ -139,6 +208,7 @@ public:
                              int wSrc, int hSrc,
                              double rotateAngle = 0.0, SDL_Point *center = nullptr, unsigned int flip = SDL_FLIP_NONE,
                              float red = 1.f, float green = 1.f, float blue = 1.f, float alpha = 1.f);
+public:
     void renderTextureScale(double xDst, double yDst, double wDst, double hDst,
                             StdPicture &tx,
                             int xSrc, int ySrc,
@@ -175,12 +245,12 @@ public:
     bool renderBlocked();
 #endif
 
-#ifndef __EMSCRIPTEN__
+#ifndef NO_SCREENSHOT
     void makeShot();
 #endif
 
 private:
-#ifndef __EMSCRIPTEN__
+#ifndef NO_SCREENSHOT
 
     struct PGE_GL_shoot
     {
@@ -223,28 +293,33 @@ private:
 #endif
 
     void processEvent();
+#ifndef __3DS__
     void loadTexture(StdPicture &target, uint32_t width, uint32_t height, uint8_t *RGBApixels);
+#else
+    void loadTexture(StdPicture &target, C2D_SpriteSheet &sheet);
+    void loadTexture2(StdPicture &target, C2D_SpriteSheet &sheet);
+    void loadTexture3(StdPicture &target, C2D_SpriteSheet &sheet);
+#endif
 
     void lazyLoad(StdPicture &target);
     void lazyUnLoad(StdPicture &target);
 
+#ifndef NO_SCREENSHOT
     std::string m_screenshotPath;
     std::string m_gifRecordPath;
 
-#ifndef __EMSCRIPTEN__
     static int makeShot_action(void *_pixels);
     SDL_Thread *m_screenshot_thread = nullptr;
 #endif
 
     //Scale of virtual and window resolutuins
-    float scale_x = 1.f;
-    float scale_y = 1.f;
+    float scale = 1.f;
     //Side offsets to keep ratio
     float offset_x = 0.f;
     float offset_y = 0.f;
     //Offset to shake screen
-    int viewport_offset_x = 0.f;
-    int viewport_offset_y = 0.f;
+    int viewport_offset_x = 0;
+    int viewport_offset_y = 0;
     //Need to calculate relative viewport position when screen was scaled
     float viewport_scale_x = 1.0f;
     float viewport_scale_y = 1.0f;

@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "../globals.h"
@@ -40,7 +35,7 @@ void NPCFrames(int A)
     if(NPCFrame[NPC[A].Type] > 0) // custom frames
     {
         NPC[A].FrameCount = NPC[A].FrameCount + 1;
-        if(NPCFrameStyle[NPC[A].Type] == 2 && (NPC[A].Projectile != 0 || NPC[A].HoldingPlayer > 0))
+        if(NPCFrameStyle[NPC[A].Type] == 2 && (NPC[A].Projectile || NPC[A].HoldingPlayer > 0))
             NPC[A].FrameCount = NPC[A].FrameCount + 1;
         if(NPC[A].FrameCount >= NPCFrameSpeed[NPC[A].Type])
         {
@@ -76,7 +71,7 @@ void NPCFrames(int A)
         }
         else if(NPCFrameStyle[NPC[A].Type] == 2)
         {
-            if(NPC[A].HoldingPlayer == 0 && NPC[A].Projectile == 0)
+            if(NPC[A].HoldingPlayer == 0 && !NPC[A].Projectile)
             {
                 if(NPC[A].Direction == -1)
                 {
@@ -238,7 +233,7 @@ void NPCFrames(int A)
     }
     else if(NPC[A].Type == 272) // spider
     {
-        if(NPC[A].Projectile != 0 || NPC[A].Location.SpeedY >= 0 || NPC[A].HoldingPlayer > 0)
+        if(NPC[A].Projectile || NPC[A].Location.SpeedY >= 0 || NPC[A].HoldingPlayer > 0)
             NPC[A].Frame = 0;
         else
             NPC[A].Frame = 2;
@@ -562,7 +557,7 @@ void NPCFrames(int A)
         // Special less than zero - body, zero - head
         if(NPC[A].Special < 0 && NPC[A].Location.SpeedY == 0)
             NPC[A].Special += 1;
-        if(NPC[A].Projectile != 0 || NPC[A].HoldingPlayer > 0)
+        if(NPC[A].Projectile || NPC[A].HoldingPlayer > 0)
             NPC[A].Frame = 4;
         else
         {
@@ -576,7 +571,7 @@ void NPCFrames(int A)
             NPC[A].FrameCount = 0;
         else if(NPC[A].FrameCount > 8)
         {
-            if(NPC[A].Projectile != 0 || NPC[A].HoldingPlayer > 0)
+            if(NPC[A].Projectile || NPC[A].HoldingPlayer > 0)
                 NPC[A].Frame += 1;
             else
                 NPC[A].Frame += 2;
@@ -906,7 +901,7 @@ void NPCFrames(int A)
                 NPC[A].Frame = 3;
         }
 
-        if(iRand() % 4 == 0)
+        if(iRand(4) == 0)
         {
             NewEffect(80, newLoc(NPC[A].Location.X + NPC[A].Location.Width / 2.0 - 4, NPC[A].Location.Y + NPC[A].Location.Height / 2.0 - 4), 1, 0, NPC[A].Shadow);
             Effect[numEffects].Location.SpeedX = dRand() * 1 - 0.5;
@@ -1065,11 +1060,11 @@ void NPCFrames(int A)
             NPC[A].Frame = NPC[A].Frame + 6;
         else // If .Special3 >= 16 Then
             NPC[A].Special3 = 0;
-        if(fRand() * 10 > 9.2)
+        if(dRand() * 10 > 9.2)
         {
             NewEffect(80, newLoc(NPC[A].Location.X + NPC[A].Location.Width / 2.0 - 4, NPC[A].Location.Y + NPC[A].Location.Height / 2.0 - 6), 1, 0, NPC[A].Shadow);
-            Effect[numEffects].Location.SpeedX = std::fmod(fRand(), 1.0) - 0.5;
-            Effect[numEffects].Location.SpeedY = std::fmod(fRand(), 1.0) - 0.5;
+            Effect[numEffects].Location.SpeedX = dRand() * 1.0 - 0.5;
+            Effect[numEffects].Location.SpeedY = dRand() * 1.0 - 0.5;
         }
     }
     else if(NPC[A].Type == 91)
@@ -1199,7 +1194,7 @@ void NPCFrames(int A)
         if(NPC[A].Direction == 1)
             NPC[A].Frame = NPC[A].Frame + 3;
 
-        if(NPC[A].Projectile != 0 || NPC[A].Special2 != 0)
+        if(NPC[A].Projectile || NPC[A].Special2 != 0)
         {
             NPC[A].Frame = NPC[A].Frame + 2;
             NPC[A].FrameCount = 0;
@@ -1252,7 +1247,7 @@ void NPCFrames(int A)
     }
     else if(NPC[A].Type >= 117 && NPC[A].Type <= 120) // beach koopa
     {
-        if(NPC[A].Projectile != 0)
+        if(NPC[A].Projectile)
         {
             if(NPC[A].Location.SpeedX < -0.5 || NPC[A].Location.SpeedX > 0.5)
                 NPC[A].Frame = 3;
@@ -1574,7 +1569,7 @@ void NPCFrames(int A)
     }
     else if(NPC[A].Type == 49) // killer pipe
     {
-        if(NPC[A].HoldingPlayer == 0 && !Player[NPC[A].standingOnPlayer].Controls.Run && NPC[A].Projectile == 0)
+        if(NPC[A].HoldingPlayer == 0 && !Player[NPC[A].standingOnPlayer].Controls.Run && !NPC[A].Projectile)
         {
             NPC[A].FrameCount = NPC[A].FrameCount + 1;
             if(NPC[A].FrameCount >= 4)
@@ -1663,7 +1658,7 @@ void NPCFrames(int A)
                                 NewEffect(80, tempLocation);
                                 Effect[numEffects].Location.SpeedX = NPC[A].Location.SpeedX * 0.5;
                                 Effect[numEffects].Location.SpeedY = NPC[A].Location.SpeedY * 0.5;
-                                Effect[numEffects].Frame = iRand() % 3;
+                                Effect[numEffects].Frame = iRand(3);
                             }
                         }
                         else if(dRand() * 10 > 6)
@@ -1677,7 +1672,7 @@ void NPCFrames(int A)
                             NewEffect(80, tempLocation, 1, 0, NPC[A].Shadow);
                             Effect[numEffects].Location.SpeedX = NPC[A].Location.SpeedX * 0.25;
                             Effect[numEffects].Location.SpeedY = NPC[A].Location.SpeedY * 0.25;
-                            Effect[numEffects].Frame = iRand() % 3;
+                            Effect[numEffects].Frame = iRand(3);
                         }
                     }
                     else
@@ -1702,7 +1697,7 @@ void NPCFrames(int A)
                             NewEffect(80, tempLocation);
                             Effect[numEffects].Location.SpeedX = NPC[A].Location.SpeedX * 0.5;
                             Effect[numEffects].Location.SpeedY = NPC[A].Location.SpeedY * 0.5;
-                            Effect[numEffects].Frame = iRand() % 3;
+                            Effect[numEffects].Frame = iRand(3);
                         }
                     }
                     else if(dRand() * 10 > 6)
@@ -1716,7 +1711,7 @@ void NPCFrames(int A)
                         NewEffect(80, tempLocation, 1, 0, NPC[A].Shadow);
                         Effect[numEffects].Location.SpeedX = NPC[A].Location.SpeedX * 0.25;
                         Effect[numEffects].Location.SpeedY = NPC[A].Location.SpeedY * 0.25;
-                        Effect[numEffects].Frame = iRand() % 3;
+                        Effect[numEffects].Frame = iRand(3);
                     }
                 }
                 else
@@ -1854,14 +1849,14 @@ void NPCFrames(int A)
             NPC[A].Frame = 10;
             NPC[A].FrameCount = 0;
         }
-        if(NPC[A].HoldingPlayer > 0 || NPC[A].Projectile != 0)
+        if(NPC[A].HoldingPlayer > 0 || NPC[A].Projectile)
             NPC[A].Frame = NPC[A].Frame + 6;
         if(NPC[A].Direction == 1)
             NPC[A].Frame = NPC[A].Frame + 3;
     }
     else if(NPC[A].Type == 19 || NPC[A].Type == 20 || NPC[A].Type == 28 || (NPC[A].Type >= 129 && NPC[A].Type <= 132) || NPC[A].Type == 135 || NPC[A].Type == 158) // Shy guys / Jumping Fish
     {
-        if(NPC[A].HoldingPlayer == 0 && NPC[A].Projectile == 0)
+        if(NPC[A].HoldingPlayer == 0 && !NPC[A].Projectile)
         {
             NPC[A].FrameCount = NPC[A].FrameCount + 1;
             if(NPC[A].Direction == -1 && NPC[A].Frame >= 2)
@@ -1914,7 +1909,7 @@ void NPCFrames(int A)
     }
     else if(NPC[A].Type == 25) // Bouncy Star things
     {
-        if(NPC[A].HoldingPlayer == 0 && NPC[A].Projectile == 0)
+        if(NPC[A].HoldingPlayer == 0 && !NPC[A].Projectile)
         {
             if(NPC[A].Location.SpeedY == 0 || NPC[A].Slope > 0)
             {

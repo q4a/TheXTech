@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef LAYERS_H
@@ -42,12 +37,47 @@ struct Layer_t
     std::string Name;
 //    Hidden As Boolean
     bool Hidden = false;
+    double OffsetX = 0.0;
+    double OffsetY = 0.0;
 //    SpeedX As Single
     float SpeedX = 0.0f;
 //    SpeedY As Single
     float SpeedY = 0.0f;
 //End Type
+    std::set<int> blocks;
+    std::set<int> BGOs;
+    std::set<int> NPCs;
+    std::set<int> warps;
+    std::set<int> waters;
 };
+
+struct EventSection_t
+{
+    enum SetActions
+    {
+        LESet_Nothing = -1,
+        LESet_ResetDefault = -2,
+    };
+
+    //! Set new Music ID in this section (-1 - do nothing, -2 - reset to defaint, >=0 - set music ID)
+    int music_id = LESet_Nothing;
+    //! Set new Custom Music File path
+    std::string music_file;
+
+    //! Set new Background ID in this section (-1 - do nothing, -2 - reset to defaint, >=0 - set background ID)
+    int background_id = LESet_Nothing;
+
+    //! Change section borders if not (-1 - do nothing, -2 set default, any other values - set X position of left section boundary)
+    Location_t position;
+
+    //! Do override current autoscroll
+    bool  autoscroll = false;
+    //! X speed of autoscrool
+    float autoscroll_x = 0.0;
+    //! Y speed of autoscrool
+    float autoscroll_y = 0.0;
+};
+
 
 //Public Type Events
 struct Events_t
@@ -71,11 +101,13 @@ struct Events_t
 //    ToggleLayer(0 To 20) As String
     std::vector<std::string> ToggleLayer;
 //    Music(0 To maxSections) As Integer
-    RangeArrI<int, 0, maxSections, 0> Music;
+//    RangeArrI<int, 0, maxSections, 0> Music;
 //    Background(0 To maxSections) As Integer
-    RangeArrI<int, 0, maxSections, 0> Background;
+//    RangeArrI<int, 0, maxSections, 0> Background;
 //    level(0 To maxSections) As Location
-    RangeArr<Location_t, 0, maxSections> level;
+//    RangeArr<Location_t, 0, maxSections> level;
+// EXTRA: Override per-section settings
+    RangeArr<EventSection_t, 0, maxSections> section;
 //    EndGame As Integer
     int EndGame = 0;
 //    TriggerEvent As String
@@ -102,12 +134,20 @@ struct Events_t
 };
 
 //Public Layer(0 To 100) As Layer
+#ifdef LOW_MEM
+const int maxLayers = 100; // 100
+#else
 const int maxLayers = 255; // 100
+#endif
 extern int numLayers;
 extern RangeArr<Layer_t, 0, maxLayers> Layer;
 
 //Public Events(0 To 100) As Events
+#ifdef LOW_MEM
+const int maxEvents = 100; // 100
+#else
 const int maxEvents = 255; // 100
+#endif
 extern int numEvents;
 extern RangeArr<Events_t, 0, maxEvents> Events;
 
@@ -129,6 +169,20 @@ void HideLayer(std::string LayerName, bool NoEffect = false);
 // Public Sub SetLayer(LayerName As String)
 void SetLayer(std::string LayerName);
 
+bool ExistsLayer(const std::string LayerName);
+
+bool RenameLayer(const std::string OldName, const std::string NewName);
+
+bool DeleteLayer(const std::string LayerName, bool killall);
+
+void InitializeEvent(Events_t& event);
+
+bool ExistsEvent(const std::string EventName);
+
+bool RenameEvent(const std::string OldName, const std::string NewName);
+
+bool DeleteEvent(const std::string EventName);
+
 // Public Sub ProcEvent(EventName As String, Optional NoEffect As Boolean = False)
 void ProcEvent(std::string EventName, bool NoEffect = false);
 
@@ -137,5 +191,19 @@ void UpdateEvents();
 
 // Public Sub UpdateLayers()
 void UpdateLayers();
+
+void syncLayersTrees_AllBlocks();
+void syncLayersTrees_Block(int block);
+void syncLayersTrees_Block_SetHidden(int block); // set block hidden based on layer
+
+void syncLayers_AllNPCs();
+void syncLayers_NPC(int npc);
+
+void syncLayers_AllBGOs();
+void syncLayers_BGO(int bgo);
+
+void syncLayers_Warp(int warp);
+
+void syncLayers_Water(int water);
 
 #endif // LAYERS_H

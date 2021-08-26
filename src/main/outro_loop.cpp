@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 
@@ -36,7 +31,9 @@
 #include "../graphics.h"
 #include "../sound.h"
 #include "../pseudo_vb.h"
+#include "../main/trees.h"
 #include "game_info.h"
+#include "trees.h"
 
 
 void DoCredits()
@@ -100,16 +97,21 @@ void DoCredits()
 //        for(A = 1; A <= 2; A++) // Useless loop
 //        {
         bool quitKey = false;
-        quitKey |= (getKeyState(vbKeyEscape) == KEY_PRESSED);
-        quitKey |= (getKeyState(vbKeySpace) == KEY_PRESSED);
-        quitKey |= (getKeyState(vbKeyReturn) == KEY_PRESSED);
         for(int p = 1; p <= maxLocalPlayers; ++p)
         {
             if(useJoystick[p] > 0)
                 quitKey |= joyIsKeyDown(useJoystick[p] - 1, conJoystick[p].Start);
         }
+#ifndef NO_SDL
+        quitKey |= (getKeyState(vbKeyEscape) == KEY_PRESSED);
+        quitKey |= (getKeyState(vbKeySpace) == KEY_PRESSED);
+        quitKey |= (getKeyState(vbKeyReturn) == KEY_PRESSED);
+#endif
 #ifdef __ANDROID__ // Quit credits on BACK key press
         quitKey |= (getKeyState(SDL_SCANCODE_AC_BACK) == KEY_PRESSED);
+#endif
+#ifdef __3DS__
+        quitKey |= frmMain.getKeyHeld(KEYCODE_START);
 #endif
 #ifdef USE_TOUCHSCREEN_CONTROLLER // Quit when pressed the "Start" on a touchscreen controller
         quitKey |= CurrentTouchControls().Start;
@@ -132,11 +134,8 @@ void OutroLoop()
 {
     Controls_t blankControls;
     int A = 0;
-    int B = 0;
     Location_t tempLocation;
     bool jumpBool = false;
-    long long fBlock = 0;
-    long long lBlock = 0;
     UpdateControls();
 
     for(A = 1; A <= numPlayers; A++)
@@ -156,29 +155,26 @@ void OutroLoop()
             tempLocation.X = Player[A].Location.X + Player[A].Location.Width + 20;
         else
             tempLocation.X = Player[A].Location.X - tempLocation.Width - 20;
-        fBlock = FirstBlock[long(tempLocation.X / 32) - 1];
-        lBlock = LastBlock[long((tempLocation.X + tempLocation.Width) / 32.0) + 1];
+        // fBlock = FirstBlock[long(tempLocation.X / 32) - 1];
+        // lBlock = LastBlock[long((tempLocation.X + tempLocation.Width) / 32.0) + 1];
+        // blockTileGet(tempLocation, fBlock, lBlock);
 
-        for(B = (int)fBlock; B <= lBlock; B++)
+        for(Block_t* block : treeBlockQuery(tempLocation, false))
         {
-            if(tempLocation.X + tempLocation.Width >= Block[B].Location.X)
+            Block_t& b = *block;
+            if(tempLocation.X + tempLocation.Width >= b.Location.X)
             {
-                if(tempLocation.X <= Block[B].Location.X + Block[B].Location.Width)
+                if(tempLocation.X <= b.Location.X + b.Location.Width)
                 {
-                    if(tempLocation.Y + tempLocation.Height >= Block[B].Location.Y)
+                    if(tempLocation.Y + tempLocation.Height >= b.Location.Y)
                     {
-                        if(tempLocation.Y <= Block[B].Location.Y + Block[B].Location.Height)
+                        if(tempLocation.Y <= b.Location.Y + b.Location.Height)
                         {
-                            if(!BlockNoClipping[Block[B].Type] && !Block[B].Invis && !Block[B].Hidden && !(BlockIsSizable[Block[B].Type] && Block[B].Location.Y < Player[A].Location.Y + Player[A].Location.Height - 3))
+                            if(!BlockNoClipping[b.Type] && !b.Invis && !b.Hidden && !(BlockIsSizable[b.Type] && b.Location.Y < Player[A].Location.Y + Player[A].Location.Height - 3))
                                 jumpBool = false;
                         }
                     }
                 }
-            }
-            else
-            {
-                if(BlocksSorted)
-                    break;
             }
         }
 
@@ -253,6 +249,13 @@ void SetupCredits()
     AddCredit("");
     AddCredit("");
 #endif
+#ifdef __3DS__
+    AddCredit("3DS port By:");
+    AddCredit("");
+    AddCredit("'ds-sloth'");
+    AddCredit("");
+    AddCredit("");
+#endif
 
     if(!WorldCredits[1].empty())
     {
@@ -297,6 +300,7 @@ void SetupCredits()
     AddCredit("Yingchun Soul"); // Idea for individual iceball shooting SFX and contribution with the "frozen NPC breaking" SFX
     AddCredit("MrDoubleA"); // Contribution with the "NPC got frozen" SFX
     AddCredit("Slash-18"); // Contribution with the better iceball shooting SFX
+    AddCredit("ds-sloth"); // For the major contribution to the code and becoming a co-developer
 #endif
     AddCredit("");
     AddCredit("4matsy");

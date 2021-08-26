@@ -4,23 +4,18 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef JOYSTICK_H
@@ -37,6 +32,9 @@ struct SDL_JoyDeviceEvent;
 // Gets players controls
 void UpdateControls();
 
+// Gets editor controls
+void UpdateEditorControls();
+
 #ifdef USE_TOUCHSCREEN_CONTROLLER
 void RenderTouchControls();
 void UpdateTouchScreenSize();
@@ -45,6 +43,8 @@ const Controls_t &CurrentTouchControls();
 
 extern void           joyFillDefaults(ConJoystick_t &j);
 extern void           joyFillDefaults(ConKeyboard_t &k);
+extern void           editorJoyFillDefaults(EditorConJoystick_t &j);
+extern void           editorJoyFillDefaults(EditorConKeyboard_t &j);
 
 extern int            joyInitJoysticks();
 extern void           joyGetAllUUIDs(int player, std::vector<std::string> &out);
@@ -75,5 +75,8 @@ extern bool joyStartJoystick(int JoystickNumber);
 // Public Sub PollJoystick()
 extern bool joyPollJoystick(int joystick, KM_Key &key);
 
+extern void setKey(ConKeyboard_t &ck, int id, int val);
+extern void setKey(ConJoystick_t &cj, int id, const KM_Key &val);
+extern KM_Key &getKey(ConJoystick_t &cj, int id);
 
 #endif // JOYSTICK_H

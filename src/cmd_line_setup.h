@@ -5,19 +5,18 @@
 
 struct CmdLineSetup_t
 {
+    //! Disable game video
+    bool noVideo = false;
     //! Disable game sound
     bool noSound = false;
     //! Skip frames when laggy rendering is
     bool frameSkip = false;
     //! Don't pause game while window is not active
     bool neverPause = false;
+    //! Allow background input for joysticks
+    bool allowBgInput = false;
     //! TYpe of a render
-    enum RenderType
-    {
-        RENDER_SW = 0,
-        RENDER_HW = 1,
-        RENDER_VSYNC = 2
-    } renderType;
+    int renderType = -1;
     //! Is a level testing mode
     bool testLevelMode = false;
     //! Level file to test
@@ -44,10 +43,21 @@ struct CmdLineSetup_t
     //! Force log output into console
     bool verboseLogging = false;
 
+    //! Enforce spefic compatibiltiy level (If Speed-Run mode is enabled, this will be overwritten)
+    int  compatibilityLevel = 0;
+
     //! Enable the speed-run mode
     int  speedRunnerMode = 0;
     //! Draw the speed-run timer semi-transparently
     bool speedRunnerSemiTransparent = false;
+
+    bool showControllerState = false;
+    //! Index to replay
+    int  recordReplayId = -1;
+    //! Record gameplay data
+    bool recordRecord = false;
+    //! Replay previous gameplay
+    bool recordReplay = false;
 };
 
 #endif // CMD_LINE_SETUP_H

@@ -4,27 +4,29 @@
  * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
  * Copyright (c) 2020-2021 Vitaly Novichkov <admin@wohlnet.ru>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- * sell copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
  *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef COMPAT_H
 #define COMPAT_H
+
+enum class NPC_activate_modes : int
+{
+    onscreen,
+    smart,
+    orig,
+};
 
 struct Compatibility_t
 {
@@ -45,11 +47,46 @@ struct Compatibility_t
     bool fix_link_clowncar_fairy;
     bool fix_dont_switch_player_by_clowncar;
     bool enable_multipoints;
+    bool fix_autoscroll_speed;
+    bool fix_blooper_stomp_effect;
+    bool keep_bullet_bill_dir;
+    bool fix_pswitch_dragon_coin;
+    bool fix_swooper_start_while_inactive;
+    bool free_level_res;
+    bool free_world_res;
+    NPC_activate_modes NPC_activate_mode;
+
+    // SpeedRun section
+    enum
+    {
+        SPEEDRUN_STOP_NONE = 0,
+        SPEEDRUN_STOP_EVENT,
+        SPEEDRUN_STOP_LEAVE_LEVEL,
+        SPEEDRUN_STOP_ENTER_LEVEL
+    };
+    int speedrun_stop_timer_by;
+    char speedrun_stop_timer_at[250];
 };
 
 extern Compatibility_t g_compatibility;
 
 void LoadCustomCompat();
 void ResetCompat();
+
+/**
+ * @brief The level of the enforced compatibility
+ */
+enum CompatibilityLevel
+{
+    //! No specific compatibiltiy will be enforced, all modern features will be enabled and tuned individually by compat.ini or settings menu
+    COMPAT_MODERN = 0,
+    //! Enables all bugs except these was been fixed at the SMBX2 project
+    COMPAT_SMBX2,
+    //! Enforces the full compatibility to the SMBX 1.3 engine and disables almost all new features and bugfixes that leads the gameplay difference
+    COMPAT_SMBX13
+};
+
+void CompatSetEnforcedLevel(int level);
+int  CompatGetLevel();
 
 #endif // COMPAT_H
